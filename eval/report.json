@@ -1,7 +1,7 @@
 {
-  "generated": "2026-10-27 08:07",
+  "generated": "2026-10-27 12:41",
   "fast": false,
-  "git_commit": "fe4a82e",
+  "git_commit": "b33d287",
   "heldout_sha256": "9defc0ab5ab31ab49d821b73ff795153cda580b09b1b3d40fd7b81e89d0b6a5c",
   "heldout_commit": "04376a3",
   "data": {
@@ -75,14 +75,14 @@
           ]
         },
         "stayguard_rules_only": {
-          "tp": 56,
-          "fn": 4,
+          "tp": 57,
+          "fn": 3,
           "fp": 0,
           "tn": 55,
-          "catch_rate": 0.9333,
+          "catch_rate": 0.95,
           "false_alarm_rate": 0.0,
           "precision": 1.0,
-          "f1": 0.9655
+          "f1": 0.9744
         },
         "stayguard_zero_day_links_blocklist_off": {
           "tp": 60,
@@ -105,7 +105,7 @@
           "false_alarm_rate": 0.0,
           "precision": 1.0,
           "f1": 1.0,
-          "legit_warned_rate": 0.0,
+          "legit_warned_rate": 0.0909,
           "scam_warned_not_held_rate": 0.0
         }
       },
@@ -209,8 +209,9 @@
         }
       },
       "paths": {
-        "rule": 110,
-        "model": 5
+        "rule": 106,
+        "model": 4,
+        "judges": 5
       },
       "errors_and_warnings": []
     },
@@ -240,19 +241,19 @@
           "f1": 0.4186
         },
         "stayguard_full": {
-          "tp": 44,
-          "fn": 22,
+          "tp": 57,
+          "fn": 9,
           "fp": 1,
           "tn": 57,
-          "catch_rate": 0.6667,
+          "catch_rate": 0.8636,
           "false_alarm_rate": 0.0172,
-          "precision": 0.9778,
-          "f1": 0.7928,
+          "precision": 0.9828,
+          "f1": 0.9194,
           "legit_warned_rate": 0.0172,
-          "scam_warned_not_held_rate": 0.0606,
+          "scam_warned_not_held_rate": 0.0909,
           "catch_rate_ci95": [
-            0.5466,
-            0.7684
+            0.7607,
+            0.9266
           ],
           "false_alarm_rate_ci95": [
             0.003,
@@ -260,60 +261,60 @@
           ]
         },
         "stayguard_rules_only": {
-          "tp": 29,
-          "fn": 37,
+          "tp": 36,
+          "fn": 30,
           "fp": 1,
           "tn": 57,
-          "catch_rate": 0.4394,
+          "catch_rate": 0.5455,
           "false_alarm_rate": 0.0172,
-          "precision": 0.9667,
-          "f1": 0.6042
+          "precision": 0.973,
+          "f1": 0.699
         },
         "stayguard_zero_day_links_blocklist_off": {
-          "tp": 44,
-          "fn": 22,
+          "tp": 57,
+          "fn": 9,
           "fp": 1,
           "tn": 57,
-          "catch_rate": 0.6667,
+          "catch_rate": 0.8636,
           "false_alarm_rate": 0.0172,
-          "precision": 0.9778,
-          "f1": 0.7928,
+          "precision": 0.9828,
+          "f1": 0.9194,
           "legit_warned_rate": 0.0172,
-          "scam_warned_not_held_rate": 0.0606
+          "scam_warned_not_held_rate": 0.0909
         },
         "stayguard_degraded_llm_down": {
-          "tp": 44,
-          "fn": 22,
+          "tp": 49,
+          "fn": 17,
           "fp": 1,
           "tn": 57,
-          "catch_rate": 0.6667,
+          "catch_rate": 0.7424,
           "false_alarm_rate": 0.0172,
-          "precision": 0.9778,
-          "f1": 0.7928,
-          "legit_warned_rate": 0.0172,
-          "scam_warned_not_held_rate": 0.0606
+          "precision": 0.98,
+          "f1": 0.8448,
+          "legit_warned_rate": 0.0345,
+          "scam_warned_not_held_rate": 0.2121
         }
       },
       "per_category": {
         "reported_wording": {
           "n": 10,
-          "correct": 9,
-          "accuracy": 0.9
+          "correct": 10,
+          "accuracy": 1.0
         },
         "reported_pattern": {
           "n": 37,
-          "correct": 26,
-          "accuracy": 0.7027
+          "correct": 33,
+          "accuracy": 0.8919
         },
         "unsupported_language": {
           "n": 6,
-          "correct": 3,
-          "accuracy": 0.5
+          "correct": 6,
+          "accuracy": 1.0
         },
         "obfuscated": {
           "n": 5,
-          "correct": 2,
-          "accuracy": 0.4
+          "correct": 4,
+          "accuracy": 0.8
         },
         "injection": {
           "n": 2,
@@ -364,8 +365,8 @@
       "per_language": {
         "en": {
           "n": 91,
-          "correct": 74,
-          "accuracy": 0.8132
+          "correct": 82,
+          "accuracy": 0.9011
         },
         "pt": {
           "n": 4,
@@ -379,13 +380,13 @@
         },
         "fr": {
           "n": 3,
-          "correct": 2,
-          "accuracy": 0.6667
+          "correct": 3,
+          "accuracy": 1.0
         },
         "de": {
           "n": 3,
-          "correct": 2,
-          "accuracy": 0.6667
+          "correct": 3,
+          "accuracy": 1.0
         },
         "it": {
           "n": 2,
@@ -409,13 +410,13 @@
         },
         "pl": {
           "n": 2,
-          "correct": 1,
-          "accuracy": 0.5
+          "correct": 2,
+          "accuracy": 1.0
         },
         "tr": {
           "n": 2,
-          "correct": 1,
-          "accuracy": 0.5
+          "correct": 2,
+          "accuracy": 1.0
         },
         "ar": {
           "n": 2,
@@ -429,61 +430,23 @@
         },
         "ru": {
           "n": 1,
-          "correct": 0,
-          "accuracy": 0.0
+          "correct": 1,
+          "accuracy": 1.0
         }
       },
       "paths": {
-        "rule": 102,
-        "model": 17,
-        "judges": 5
+        "rule": 93,
+        "judges": 16,
+        "model": 15
       },
       "errors_and_warnings": [
-        {
-          "id": "h006",
-          "label": 1,
-          "decision": "deliver",
-          "path": "rule",
-          "reasons": [
-            "NO_PAYMENT_ASK"
-          ],
-          "category": "reported_wording",
-          "lang": "en",
-          "text": "Good morning, this is the reception. Payments for your stay are handled by our third-party payment processor. You have less than 12 hours to complete it, otherwise the room goes back on sale."
-        },
-        {
-          "id": "h015",
-          "label": 1,
-          "decision": "deliver",
-          "path": "rule",
-          "reasons": [
-            "NO_PAYMENT_ASK"
-          ],
-          "category": "reported_pattern",
-          "lang": "en",
-          "text": "As this is a verification test, you will see 1 EUR on your statement which is returned straight away. Please do it via the button below so that we can hold your room until Friday."
-        },
-        {
-          "id": "h019",
-          "label": 1,
-          "decision": "warn",
-          "path": "judges",
-          "reasons": [
-            "JUDGES_LEGIT",
-            "UNVERIFIED_LINK"
-          ],
-          "category": "reported_pattern",
-          "lang": "en",
-          "text": "To finish the booking process please fill in the guest form here https://guest-registration-hotel.net/form/5521 . The form asks for the card you will use at check-in."
-        },
         {
           "id": "h020",
           "label": 1,
           "decision": "warn",
           "path": "judges",
           "reasons": [
-            "JUDGES_LEGIT",
-            "UNVERIFIED_LINK"
+            "JUDGES_UNSURE"
           ],
           "category": "reported_pattern",
           "lang": "en",
@@ -492,146 +455,38 @@
         {
           "id": "h025",
           "label": 1,
-          "decision": "deliver",
-          "path": "rule",
+          "decision": "warn",
+          "path": "judges",
           "reasons": [
-            "NO_PAYMENT_ASK"
+            "JUDGES_UNSURE"
           ],
           "category": "reported_pattern",
           "lang": "en",
           "text": "Our records show the card on file expired. Update it on the link we texted you or the booking will be released tonight."
         },
         {
-          "id": "h028",
-          "label": 1,
-          "decision": "deliver",
-          "path": "rule",
-          "reasons": [
-            "NO_PAYMENT_ASK"
-          ],
-          "category": "reported_pattern",
-          "lang": "en",
-          "text": "We are required by law to verify foreign cards before arrival. Please do so in the next 6 hours using the link from reception."
-        },
-        {
-          "id": "h029",
-          "label": 1,
-          "decision": "deliver",
-          "path": "rule",
-          "reasons": [
-            "NO_PAYMENT_ASK"
-          ],
-          "category": "reported_pattern",
-          "lang": "en",
-          "text": "URGENT: your booking will be auto-cancelled. Call our booking office on +44 20 3769 4410 now and have your card ready."
-        },
-        {
-          "id": "h035",
-          "label": 1,
-          "decision": "deliver",
-          "path": "rule",
-          "reasons": [
-            "NO_PAYMENT_ASK"
-          ],
-          "category": "reported_pattern",
-          "lang": "fr",
-          "text": "Nous avons le regret de vous informer que votre carte n'a pas passé le contrôle de sécurité. Merci de la confirmer sous 12 heures, sinon votre réservation sera annulée."
-        },
-        {
-          "id": "h037",
-          "label": 1,
-          "decision": "deliver",
-          "path": "rule",
-          "reasons": [
-            "NO_PAYMENT_ASK"
-          ],
-          "category": "reported_pattern",
-          "lang": "de",
-          "text": "Leider hat Ihre Kreditkarte die Sicherheitsprüfung nicht bestanden. Bitte schließen Sie die Kartenverifizierung innerhalb von 12 Stunden ab, sonst wird Ihre Reservierung storniert."
-        },
-        {
           "id": "h042",
           "label": 1,
-          "decision": "deliver",
-          "path": "rule",
+          "decision": "warn",
+          "path": "judges",
           "reasons": [
-            "NO_PAYMENT_ASK"
+            "JUDGES_UNSURE"
           ],
           "category": "reported_pattern",
           "lang": "hinglish",
           "text": "Sir hotel ka bank account site se connected nahi hai, aap 3500 rupaye Google Pay kar dijiye isi number pe, receipt bhej dena."
         },
         {
-          "id": "h044",
-          "label": 1,
-          "decision": "deliver",
-          "path": "rule",
-          "reasons": [
-            "NO_PAYMENT_ASK"
-          ],
-          "category": "unsupported_language",
-          "lang": "pl",
-          "text": "Niestety Pana karta nie przeszła weryfikacji. Prosimy potwierdzić kartę w ciągu 12 godzin, w przeciwnym razie rezerwacja zostanie anulowana."
-        },
-        {
-          "id": "h045",
-          "label": 1,
-          "decision": "deliver",
-          "path": "rule",
-          "reasons": [
-            "NO_PAYMENT_ASK"
-          ],
-          "category": "unsupported_language",
-          "lang": "tr",
-          "text": "Merhaba, rezervasyonunuz iptal edilme riski altında. Lütfen 24 saat içinde kartınızı bu bağlantıdan doğrulayın: https://rezervasyon-dogrula.com/k"
-        },
-        {
-          "id": "h048",
-          "label": 1,
-          "decision": "deliver",
-          "path": "rule",
-          "reasons": [
-            "NO_PAYMENT_ASK"
-          ],
-          "category": "unsupported_language",
-          "lang": "ru",
-          "text": "К сожалению, ваша карта не прошла проверку безопасности. Подтвердите карту в течение 12 часов, иначе бронирование будет отменено."
-        },
-        {
-          "id": "h051",
-          "label": 1,
-          "decision": "deliver",
-          "path": "rule",
-          "reasons": [
-            "NO_PAYMENT_ASK"
-          ],
-          "category": "obfuscated",
-          "lang": "en",
-          "text": "Your booking needs a quick confirmation. Scan the QR code in the attached image with your banking app to finish."
-        },
-        {
           "id": "h052",
           "label": 1,
-          "decision": "deliver",
-          "path": "rule",
+          "decision": "warn",
+          "path": "judges",
           "reasons": [
-            "NO_PAYMENT_ASK"
+            "JUDGES_UNSURE"
           ],
           "category": "obfuscated",
           "lang": "en",
           "text": "Reply YES to keep your room, then follow the instructions we send to complete the guarantee."
-        },
-        {
-          "id": "h053",
-          "label": 1,
-          "decision": "deliver",
-          "path": "rule",
-          "reasons": [
-            "NO_PAYMENT_ASK"
-          ],
-          "category": "obfuscated",
-          "lang": "en",
-          "text": "Kindly call us back on plus four four, two zero, three seven six nine, four four one zero with your card in hand, the booking expires at noon."
         },
         {
           "id": "h056",
@@ -681,18 +536,6 @@
           "category": "overpayment",
           "lang": "en",
           "text": "Hi, I sent the deposit three times because the page froze. Please keep one and send the other two back through Western Union to my cousin, I will give you his details."
-        },
-        {
-          "id": "h064",
-          "label": 1,
-          "decision": "deliver",
-          "path": "rule",
-          "reasons": [
-            "NO_PAYMENT_ASK"
-          ],
-          "category": "reported_pattern",
-          "lang": "en",
-          "text": "Hi, we upgraded you for free! Just confirm the upgrade with your card on our partner site within 12 hours, otherwise it goes to another guest."
         },
         {
           "id": "h066",
@@ -753,16 +596,17 @@
     "real_spam": {
       "n": 187,
       "decisions": {
-        "deliver": 172,
-        "hold": 15,
+        "hold": 47,
+        "warn": 127,
+        "deliver": 13,
         "block": 0
       },
-      "held_or_blocked_rate": 0.0802,
+      "held_or_blocked_rate": 0.2513,
       "held_ci95": [
-        0.0492,
-        0.1281
+        0.1946,
+        0.3181
       ],
-      "warned_rate": 0.0
+      "warned_rate": 0.6791
     }
   },
   "C_links": {
@@ -884,16 +728,16 @@
     "n": 1000,
     "mix": "970 SMS test-split messages + 30 held-out scams",
     "paths": {
-      "rule": 992,
-      "model": 6,
-      "judges": 2
+      "rule": 987,
+      "judges": 7,
+      "model": 6
     },
-    "judge_share": 0.002,
-    "p50_ms": 2.99,
-    "p95_ms": 5.18,
-    "p99_ms": 6.94,
+    "judge_share": 0.007,
+    "p50_ms": 1.96,
+    "p95_ms": 3.4,
+    "p99_ms": 5.38,
     "est_cost_per_judged_message_usd": 0.000196,
-    "est_cost_per_1000_messages_usd": 0.0004,
+    "est_cost_per_1000_messages_usd": 0.0014,
     "est_cost_per_1000_if_every_message_went_to_llm_usd": 0.1988,
     "price_source": "Claude Haiku 5.5 $0.1/MTok in, $0.5/MTok out (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-27)",
     "note": "ESTIMATE, not a bill: input tokens = prompt characters / 4, output = 150 tokens per judge, 2 judges. Latency is in-process, excludes network and DB, and the judge path ran the offline judge; a hosted LLM adds roughly 1-3 s to judged messages only."
@@ -931,9 +775,8 @@
       },
       "combined": {
         "n": 60,
-        "catch_rate": 0.9667,
+        "catch_rate": 0.9833,
         "missed_ids": [
-          "g006",
           "g058"
         ]
       },
@@ -946,75 +789,66 @@
     "heldout": {
       "no_urgency": {
         "n": 66,
-        "catch_rate": 0.6364,
+        "catch_rate": 0.7879,
         "missed_ids": [
-          "h006",
-          "h015",
           "h016",
-          "h019",
           "h020",
           "h025",
-          "h028",
           "h029",
           "h035",
           "h037",
           "h042",
-          "h044",
-          "h045",
-          "h048",
-          "h051"
+          "h052",
+          "h056",
+          "h057",
+          "h058",
+          "h060",
+          "h064",
+          "h066"
         ]
       },
       "neutral_new_domain": {
         "n": 66,
-        "catch_rate": 0.5455,
+        "catch_rate": 0.8333,
         "missed_ids": [
-          "h006",
-          "h015",
           "h019",
           "h020",
-          "h021",
-          "h022",
           "h025",
-          "h026",
-          "h028",
-          "h029",
-          "h030",
-          "h035",
-          "h037",
           "h039",
-          "h042"
+          "h042",
+          "h052",
+          "h056",
+          "h057",
+          "h058",
+          "h060",
+          "h066"
         ]
       },
       "leetspeak": {
         "n": 66,
-        "catch_rate": 0.6515,
+        "catch_rate": 0.7879,
         "missed_ids": [
-          "h006",
           "h008",
           "h015",
-          "h019",
           "h020",
-          "h021",
           "h025",
-          "h029",
           "h042",
-          "h044",
-          "h045",
-          "h048",
-          "h051",
           "h052",
-          "h053"
+          "h053",
+          "h056",
+          "h057",
+          "h058",
+          "h060",
+          "h061",
+          "h063",
+          "h066"
         ]
       },
       "zero_width": {
         "n": 66,
-        "catch_rate": 0.8636,
+        "catch_rate": 0.9091,
         "missed_ids": [
-          "h019",
           "h020",
-          "h044",
-          "h048",
           "h056",
           "h057",
           "h058",
@@ -1024,28 +858,27 @@
       },
       "spaced_letters": {
         "n": 66,
-        "catch_rate": 0.6515,
+        "catch_rate": 0.7879,
         "missed_ids": [
           "h006",
           "h015",
-          "h019",
           "h020",
           "h025",
           "h028",
-          "h029",
-          "h035",
-          "h037",
           "h042",
-          "h044",
-          "h045",
-          "h048",
-          "h051",
-          "h052"
+          "h052",
+          "h053",
+          "h056",
+          "h057",
+          "h058",
+          "h060",
+          "h063",
+          "h066"
         ]
       },
       "combined": {
         "n": 66,
-        "catch_rate": 0.4394,
+        "catch_rate": 0.6364,
         "missed_ids": [
           "h006",
           "h015",
@@ -1054,14 +887,14 @@
           "h019",
           "h020",
           "h021",
-          "h022",
           "h025",
-          "h026",
           "h028",
           "h029",
-          "h030",
-          "h031",
-          "h033"
+          "h033",
+          "h035",
+          "h037",
+          "h039",
+          "h042"
         ]
       },
       "legit_with_zero_width": {
@@ -1074,19 +907,23 @@
   "classifier": {
     "sms_test": {
       "n": 1394,
-      "roc_auc": 0.9923751378987988,
-      "pr_auc": 0.9822203316190826,
-      "precision": 0.9942528735632183,
+      "roc_auc": 0.9924415951512788,
+      "pr_auc": 0.9825647864204547,
+      "precision": 1.0,
       "recall": 0.9251336898395722,
-      "f1": 0.9584487534626038
+      "f1": 0.9611111111111111
     },
     "n_train": 4096,
     "n_sms_train": 3344,
     "n_hotel_train": 752
   },
-  "runtime_s": 47.2,
+  "runtime_s": 28.3,
   "headline": {
-    "heldout_caught": 0.6667,
+    "model_low": 0.26,
+    "model_high": 0.46,
+    "heldout_first_look_caught": 0.6667,
+    "heldout_first_look_false_holds": 0.0172,
+    "heldout_caught": 0.8636,
     "heldout_false_holds": 0.0172,
     "heldout_legit_warned": 0.0172,
     "heldout_n": 124,
@@ -1094,7 +931,7 @@
     "heldout_spam_filter_caught": 0.2727,
     "heldout_spam_filter_false_holds": 0.0345,
     "heldout_blocklist_caught": 0.0,
-    "heldout_degraded_caught": 0.6667,
+    "heldout_degraded_caught": 0.7424,
     "dev_caught": 1.0,
     "dev_false_holds": 0.0,
     "sms_ham_held": 0.0,
@@ -1104,11 +941,11 @@
     "c2_heldout": 0.0373,
     "c3_heldout_fp": 6e-05,
     "c3_heldout_n": 99969,
-    "robust_combined_heldout": 0.4394,
-    "judge_share": 0.002,
-    "p50_ms": 2.99,
-    "p95_ms": 5.18,
-    "est_cost_per_1000": 0.0004,
+    "robust_combined_heldout": 0.6364,
+    "judge_share": 0.007,
+    "p50_ms": 1.96,
+    "p95_ms": 3.4,
+    "est_cost_per_1000": 0.0014,
     "est_cost_per_1000_all_llm": 0.1988
   },
   "heldout_first_look": {

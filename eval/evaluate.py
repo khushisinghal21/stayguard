@@ -532,7 +532,14 @@ def to_md(r: dict[str, Any]) -> str:
 def headline(r: dict[str, Any]) -> dict[str, Any]:
     """The numbers README/DECISIONS quote. scripts/render_docs.py renders them; tests check they match."""
     A, B, C, E, F = r["A_messages"], r["B_real_sms"], r["C_links"], r["E_cost_latency"], r["F_robustness"]
+    # The frozen first blind run sits next to the current numbers: later fixes were made after its misses were seen,
+    # so the current held-out numbers are less blind than that first run and must never be quoted without it.
+    fl = json.loads(FIRST_LOOK.read_text())["A_messages_heldout"]["systems"]["stayguard_full"] if FIRST_LOOK.exists() else {}
     return {
+        "model_low": r["thresholds"]["model_low"],
+        "model_high": r["thresholds"]["model_high"],
+        "heldout_first_look_caught": fl.get("catch_rate"),
+        "heldout_first_look_false_holds": fl.get("false_alarm_rate"),
         "heldout_caught": A["heldout"]["systems"]["stayguard_full"]["catch_rate"],
         "heldout_false_holds": A["heldout"]["systems"]["stayguard_full"]["false_alarm_rate"],
         "heldout_legit_warned": A["heldout"]["systems"]["stayguard_full"]["legit_warned_rate"],

@@ -15,8 +15,10 @@ StayGuard checks three things together:
    hotel, so a message demanding payment before arrival on one of those is a scam, whatever the wording.*
    Then links, card and bank requests, off-platform payment, prompt injection and obfuscation, a small
    multilingual model, and two AI judges only for the unclear cases.
-3. **Contain it in one click.** Log out every session, force a passkey, freeze payout changes for 72 h, rotate
-   reservation PINs, warn every guest the attacker could see, and write the case file with MITRE ATT&CK mapping.
+3. **Contain it in one click.** Log out every session, force a passkey, freeze payout changes for 72 h, rotate the
+   PINs of, and warn, every guest whose booking the attacker's session opened (as reported by the extranet) or
+   messaged, and write the case file with MITRE ATT&CK mapping. If login telemetry says the session read more
+   bookings than were reported, the case file says so and asks for manual review instead of guessing.
 
 Guests get a **"Is this really from my hotel?"** check, and hotels are protected from the reverse scam too
 (fake guests "overpaying" and asking for a refund by wire).
@@ -29,37 +31,43 @@ Guests get a **"Is this really from my hotel?"** check, and hotels are protected
 | [UCI SMS Spam Collection](https://archive.ics.uci.edu/dataset/228/sms+spam+collection) | Trains the language model; held-out real messages measure false alarms | 5,574 messages |
 | [Phishing.Database](https://github.com/mitchellkrogza/Phishing.Database) (active domains) | Live phishing blocklist; 363 real Booking-themed hosts for testing | 392,178 domains |
 | [OpenPhish public feed](https://github.com/openphish/public_feed) | Blocklist + generic phishing test | 300 URLs |
-| [Top 1M domains](https://github.com/zer0h/top-1000000-domains) | Top 10k = popularity allowlist; ranks 10k–110k = unseen legit domains for false-positive tests | 1M domains |
+| [Top 1M domains](https://github.com/zer0h/top-1000000-domains) | Top 10k = popularity allowlist; ranks 10k–110k = dev and 110k–210k = held-out legit domains for false-positive tests | 1M domains |
 
-Hand-written by us (and labelled as such): hotel message seeds for training (EN/HI/Hinglish/ES/PT/FR/DE/IT),
-a separate 115-message golden + red-team set, and synthetic login telemetry (real account-takeover logs are private).
+Hand-written by us (and labelled as such): hotel message seeds for training (EN/HI/Hinglish/ES/PT/FR/DE/IT); a
+115-message **dev** set written alongside the rules; a 124-message **held-out** set built from cited public scam
+reports (`data/curated/HELDOUT_SOURCES.md`) and committed before its first run; a red-team corpus
+(`tests/adversarial/corpus.py`); and synthetic login telemetry (real account-takeover logs are private). Every live
+feed is pinned by SHA-256 in `data/MANIFEST.json`, and reports refuse to compare across different feed snapshots.
 
 ## Results (rendered from `eval/report.json` by `scripts/render_docs.py`)
 
 <!-- results:start -->
 | | |
 |---|---|
-| Held-out scams caught (written from cited public reports, never tuned on) | **66.7%** of 66 |
-| Held-out legitimate messages wrongly held / delivered with a warning | **1.7%** / 1.7% |
+| Held-out scams caught, first blind run (frozen before any held-out result was seen) | **66.7%** of 66 (wrongly held 1.7%) |
+| Held-out scams caught now (after later fixes; the first run's misses had been seen, so less blind) | 86.4% of 66 |
+| Held-out legitimate messages wrongly held / delivered with a warning (now) | 1.7% / 1.7% |
 | Same held-out set: generic spam filter caught / wrongly held | 27.3% / 3.5% |
 | Same held-out set: phishing blocklist alone caught | 0% |
-| Held-out scams caught with the AI judges down | 66.7% |
-| Held-out scams caught after rewriting (no deadline + fresh domain + leetspeak) | 43.9% |
+| Held-out scams caught with the AI judges down | 74.2% |
+| Held-out scams caught after rewriting (no deadline + fresh domain + leetspeak) | 63.6% |
 | Dev set (written alongside the rules): caught / wrongly held | 100% / 0% |
 | Real everyday SMS wrongly held (1,207 messages, domain-shifted) | 0% |
 | Unseen legit domains flagged (99,969 domains, ranks 110k-210k) | 0.006% |
 | Unseen Booking look-alike phishing hosts flagged, blocklist off (182 hosts) | 88.5% |
 | Random phishing hosts from the whole feed flagged, blocklist off | 3.7% |
-| Messages sent to the AI judges / estimated LLM cost per 1,000 messages | 0.2% / $0.0004 (vs $0.1988 if every message went to the judges) |
-| Latency p50 / p95 (in-process, offline judge) | 3.0 ms / 5.2 ms |
+| Messages sent to the AI judges / estimated LLM cost per 1,000 messages | 0.7% / $0.0014 (vs $0.1988 if every message went to the judges) |
+| Latency p50 / p95 (in-process, offline judge) | 2.0 ms / 3.4 ms |
 <!-- results:end -->
 
 ### Honest caveats
 
-1. **Read held-out, not dev.** Until 27 Oct 2026 every message number here came from a set written alongside the
-   rules and used to tune them (100% caught, 0% false holds). A separately written held-out set, built from cited
-   public scam reports and committed before its first run, gives the numbers above. The first blind run is frozen in
-   `eval/heldout_first_look.json`.
+1. **Read held-out, not dev, and quote the first blind run.** Until 27 Oct 2026 every message number here came from
+   a set written alongside the rules and used to tune them (100% caught, 0% false holds). A separately written
+   held-out set, built from cited public scam reports and committed before its first run, caught
+   <!-- num:heldout_first_look_caught -->66.7%<!-- /num --> of scams on that first blind run (frozen in
+   `eval/heldout_first_look.json`). Later fixes were driven by a separate red-team corpus, but the held-out misses
+   had already been seen, so today's <!-- num:heldout_caught -->86.4%<!-- /num --> is less blind than that first run.
 2. **The held-out set has the same author as the rules.** Citing outside wording and freezing the first look reduce the
    bias; they don't remove it. Real validation needs labelled platform traffic.
 3. **The SMS false-alarm test is domain-shifted.** Personal SMS rarely ask for money, so 0% held there shows StayGuard
@@ -69,6 +77,18 @@ a separate 115-message golden + red-team set, and synthetic login telemetry (rea
 5. **Cost is an estimate** from the published Claude Haiku 5.5 price and estimated token counts, not a bill.
 6. **Thresholds** (`MODEL_LOW`/`MODEL_HIGH`) are chosen on a calibration split by a stated rule (`eval/calibrate.py`),
    never on held-out data.
+7. **The AI judges in every number are the offline deterministic stand-in.** No real LLM judge was run for these
+   results; with `STAYGUARD_ANTHROPIC_API_KEY` set the judges change and the numbers would need re-measuring.
+
+### Known limitations (each pinned by a test that fails the day it is fixed)
+
+- **Lexicon-free lures with a fresh, brand-free domain** ("Your stay needs one more step. Finish it at
+  `<new domain>` before you travel.") are delivered *with a warning*, not held: red-team case A02, a strict xfail in
+  `tests/adversarial/test_redteam.py`.
+- **Languages outside the lexicons** rely on the model and judges; held-out misses are listed in `eval/report.md`.
+- **Shorteners** are never followed (no network), so they get a warning, not a verdict.
+- **The guest-check PIN** is 4 digits: if the database leaked, the salted hashes fall to 10,000 guesses. The real
+  protection is the attempt limit (5 per booking, 20 per client, per 15 minutes).
 
 ## Run it
 
@@ -110,35 +130,41 @@ Development: see `CONTRIBUTING.md` (`make lint types test`). Agents: see `CLAUDE
 |---|---|
 | `POST /v1/messages/check` | Decide on a message: `deliver` / `warn` / `hold` / `block`, with reason codes, quoted evidence, path, trace, versions. `message_id` makes it idempotent. |
 | `POST /v1/sessions/score` | Score an extranet login/session for takeover risk; returns `step_up_required`. |
-| `POST /v1/guest/verify` | Guest check by reservation number + PIN. |
+| `POST /v1/sessions/{id}/reads` | The extranet reports which reservations a session opened (used by containment). |
+| `POST /v1/guest/verify` | Guest check by reservation number + PIN (public; rate-limited and locked after repeated wrong PINs). |
 | `POST /v1/properties/{id}/contain` | One-click containment; returns the case file. |
 | `GET /v1/metrics` | Live counters, path share, p50/p95, cost per 1,000, dataset facts, evaluation. |
 | `GET /v1/audit`, `GET /v1/audit/verify` | Tamper-evident audit trail. |
 | `POST /v1/admin/llm-outage` | Simulate the LLM provider going down. |
-| `POST /v1/demo/simulate-attack` | The scripted demo. |
+| `POST /v1/demo/simulate-attack`, `POST /v1/reservations/{id}/demo-pin`, `GET /v1/samples` | Demo mode only (404 otherwise). |
 
-Interactive docs at `/docs`. Set `STAYGUARD_API_KEY` to require an `X-API-Key` header.
+Interactive docs at `/docs`. Everything except the console, `/healthz` and `/v1/guest/verify` needs `X-API-Key`
+in production mode. A reused `message_id` with a different payload is rejected with 409.
 
 ## How a message is decided
 
 ```
 message ──► guardrails ──► links ──► fast rules ──► small model ──► AI judges ──► login risk ──► decision
             mask PII       392k      payment terms   TF-IDF+LR      prosecutor     takeover score
-            injection      blocklist card/bank asks  <0.10 deliver  vs defender,   makes it stricter,
-            hidden chars   look-alike off-platform   >0.90 hold     quotes must    critical = nothing
+            injection      blocklist card/bank asks  <LOW deliver   vs defender,   makes it stricter,
+            hidden chars   look-alike off-platform   >HIGH hold     quotes must    critical = nothing
             leetspeak      typosquat overpayment     else ─────────►exist in text  goes out
 ```
 
-Cheap and explainable first; the judges only see what nothing else could settle (0.1% of normal traffic).
-If they time out or the circuit breaker is open: normal login → deliver with a warning; risky login → hold.
+Cheap and explainable first; the judges only see what nothing else could settle
+(<!-- num:judge_share -->0.7%<!-- /num --> of the evaluation's realistic mix). The model thresholds (LOW <!-- num:model_low -->0.26<!-- /num -->,
+HIGH <!-- num:model_high -->0.46<!-- /num -->) come from `eval/calibration.json`. If the judges time out or the circuit breaker is open: normal login → deliver with a
+warning; risky login → hold. Any *other* internal error holds the message (`SYSTEM_EXCEPTION_FAIL_CLOSED`).
 
 ## Layout
 
 ```
-stayguard/      signals.py (lexicons, PII, injection, deobfuscation)  links.py  classifier.py
-                session_risk.py  judges.py  engine.py (router)  service.py  db.py  api.py  static/
-data/raw/       downloaded datasets          data/curated/  train seeds + golden eval set
-eval/           evaluate.py, report.md, report.json
-tests/          pytest suite
-DECISIONS.md    why each choice was made
+stayguard/      signals.py (lexicons, PII, injection, deobfuscation)  links.py  domains.py  classifier.py
+                session_risk.py  judges.py  engine.py (router)  service.py  db.py  api.py  maintenance.py  static/
+data/raw/       downloaded datasets (pinned by data/MANIFEST.json)
+data/curated/   train seeds, dev set (golden_eval.jsonl), held-out set (heldout_eval.jsonl + HELDOUT_SOURCES.md)
+eval/           evaluate.py, calibrate.py, report.md/json, calibration.json, heldout_first_look.json (frozen)
+tests/          unit, integration and tests/adversarial (red-team corpus); offline on tests/fixtures/raw
+docs/           HARDENING_PLAN.md, MESSAGE_TRACE.md, ADVERSARIAL_REVIEW.md, baselines/
+DECISIONS.md    why each choice was made           CLAUDE.md  invariants agents must keep
 ```

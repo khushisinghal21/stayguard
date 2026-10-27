@@ -26,6 +26,8 @@ def fmt(key: str, v: object) -> str:
             return f"${v:.4f}"
         if key.endswith("_ms"):
             return f"{v:.1f} ms"
+        if key in ("model_low", "model_high"):
+            return f"{v:.2f}"
         if key in ("c3_heldout_fp",):
             return f"{v:.3%}"
         if 0 <= v <= 1:
@@ -40,12 +42,17 @@ def results_table(h: dict) -> str:
     f = lambda k: fmt(k, h[k])  # noqa: E731
     rows = [
         (
-            "Held-out scams caught (written from cited public reports, never tuned on)",
-            f"**{f('heldout_caught')}** of {f('heldout_n_scam')}",
+            "Held-out scams caught, first blind run (frozen before any held-out result was seen)",
+            f"**{f('heldout_first_look_caught')}** of {f('heldout_n_scam')} "
+            f"(wrongly held {f('heldout_first_look_false_holds')})",
         ),
         (
-            "Held-out legitimate messages wrongly held / delivered with a warning",
-            f"**{f('heldout_false_holds')}** / {f('heldout_legit_warned')}",
+            "Held-out scams caught now (after later fixes; the first run's misses had been seen, so less blind)",
+            f"{f('heldout_caught')} of {f('heldout_n_scam')}",
+        ),
+        (
+            "Held-out legitimate messages wrongly held / delivered with a warning (now)",
+            f"{f('heldout_false_holds')} / {f('heldout_legit_warned')}",
         ),
         (
             "Same held-out set: generic spam filter caught / wrongly held",

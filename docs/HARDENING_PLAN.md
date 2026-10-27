@@ -142,3 +142,37 @@ estimate everywhere.
 **First held-out result (blind):** 66.7% of scams caught, 1.7% of legitimate messages held (dev: 100% / 0%). 16 of the
 22 misses were delivered by the "no payment ask" fast path. Not fixed here: Phase 3's adversarial corpus covers the
 same attack classes independently, and any fix it drives will be reported against the frozen first look.
+
+### Phase 2 status
+
+| # | Item | Status | Evidence |
+|---|---|---|---|
+| 14 | Packaging + lockfiles | Done | `pyproject.toml`, `requirements.lock`, `requirements-dev.lock` (hashes) |
+| 15 | ruff lint + format | Done | `ruff check .` and `ruff format --check .` clean; per-line ignores carry a reason |
+| 16 | mypy | Done | strict on engine, signals, links, judges, service, domains, artifacts, config; `python -m mypy stayguard` clean. `make types` and CI now call `python -m mypy` (a globally installed mypy could not import the pydantic plugin) |
+| 17 | Validated config | Done | Pydantic settings, bounds + cross-field checks, tested error messages |
+| 18 | Trace-id logging | Done | `stayguard/logs.py`; masked text only |
+| 19 | CI | Done | `.github/workflows/ci.yml`: lint, types, tests + coverage gates, docs check, fast offline eval |
+| 20 | Container | Done | multi-stage, non-root, healthcheck, lockfile install |
+| 21 | pre-commit | Done | ruff, ruff-format, mypy, detect-secrets |
+| 22 | CONTRIBUTING.md, CLAUDE.md | Done | |
+
+### Phase 3 status
+
+| # | Item | Status | Evidence |
+|---|---|---|---|
+| 23 | Unit tests | Done | `tests/test_signals.py`, `test_links.py`, `test_engine.py`, `test_judges.py`, `test_session_db_config.py` |
+| 24 | Integration tests | Done | `tests/test_api.py` (every endpoint, both modes), `tests/test_service_integration.py` (fault injection, containment, guest check, concurrency, SQLite stress, eval-schema vs console) |
+| 25 | Red-team suite | Done, one known failure | `tests/adversarial/test_redteam.py`; A02 is a strict xfail (DECISIONS #26) |
+| 26 | Coverage gates | Met | 389 passed + 1 xfail in ~30 s offline; 98.4% overall; engine 99.6%, signals 98.3%, links 98.9% |
+
+**Found while doing Phase 3:** a legitimate "We confirm your reservation. Directions: <maps link>" was held (DECISIONS
+#25). Fixed in `b33d287`. The `code-review` and `security-review` skills named in the brief are not available in this
+environment; Phase 5's three hostile review agents stand in for them.
+
+### Phase 4 status
+
+Report regenerated from a full run (`eval/report.json`); README and DECISIONS numbers rendered from it, including the
+thresholds, which were hand-typed in the README diagram before. The README results table now shows the frozen first
+blind held-out run (66.7% caught) next to the current, less blind number (86.4%). DECISIONS #15–#27 record every
+Phase 1–3 decision.
