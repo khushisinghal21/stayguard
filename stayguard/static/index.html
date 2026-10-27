@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StayGuard console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="7" width="26" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M9 16l5 5 9-10" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>StayGuard</span>
+  </div>
+  <div class="status" id="status" aria-live="polite"></div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" data-tab="attack">Live attack</button>
+  <button role="tab" aria-selected="false" data-tab="lab">Check a message</button>
+  <button role="tab" aria-selected="false" data-tab="guest">Guest view</button>
+  <button role="tab" aria-selected="false" data-tab="results">Results</button>
+  <button role="tab" aria-selected="false" data-tab="audit">Audit log</button>
+</nav>
+
+<main>
+  <!-- LIVE ATTACK -->
+  <section class="panel" id="tab-attack" role="tabpanel">
+    <div class="hero">
+      <div>
+        <h1>A hotel account was just hijacked. See what reaches the guests.</h1>
+        <p class="lede">The attacker logs in with a stolen session cookie and messages real upcoming guests from the
+          <span id="hotelName">Lisbon City Hotel</span> bookings dataset. Every message is checked before delivery.</p>
+      </div>
+      <button class="primary" id="runAttack">Run the attack</button>
+    </div>
+    <div class="split">
+      <ol class="timeline" id="timeline" aria-live="polite">
+        <li class="empty">Nothing yet. Run the attack to replay a reservation hijack against real bookings.</li>
+      </ol>
+      <aside class="account" id="account">
+        <h2>Attacker session</h2>
+        <p class="muted">Appears once the attacker logs in.</p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- LAB -->
+  <section class="panel" id="tab-lab" role="tabpanel" hidden>
+    <div class="lab">
+      <form id="labForm" class="labform">
+        <label for="sample">Start from an example</label>
+        <select id="sample"><option value="">Write my own</option></select>
+        <label for="labText">Message</label>
+        <textarea id="labText" rows="6" required>Hello, our payment system failed. To keep your room please pay the deposit of 120 EUR within 12 hours at https://secure-bookimg.com/pay</textarea>
+        <div class="row3">
+          <div><label for="terms">Booking is</label>
+            <select id="terms"><option value="pay_at_property">Pay at hotel</option><option value="prepaid">Prepaid</option><option value="deposit">Deposit</option></select></div>
+          <div><label for="direction">Sent by</label>
+            <select id="direction"><option value="hotel_to_guest">Hotel</option><option value="guest_to_hotel">Guest</option></select></div>
+          <div><label for="sess">Their login</label>
+            <select id="sess"><option value="normal">Normal</option><option value="risky">Unusual</option><option value="critical">Taken over</option></select></div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="outage"> Simulate the AI judges being down</label>
+        <button class="primary" type="submit">Check message</button>
+      </form>
+      <div class="result" id="labResult"><p class="muted">The decision, the evidence and each step of the check appear here.</p></div>
+    </div>
+  </section>
+
+  <!-- GUEST -->
+  <section class="panel" id="tab-guest" role="tabpanel" hidden>
+    <div class="guestwrap">
+      <div class="phone">
+        <h2>Is this message really from my hotel?</h2>
+        <p class="muted">Paste a message you received. We check it against your booking.</p>
+        <form id="guestForm">
+          <div class="row2">
+            <div><label for="gRes">Reservation number</label><input id="gRes" required autocomplete="off"></div>
+            <div><label for="gPin">PIN</label><input id="gPin" required inputmode="numeric" maxlength="6" autocomplete="off"></div>
+          </div>
+          <button type="button" class="link" id="gFill">Use a demo reservation</button>
+          <label for="gText">The message</label>
+          <textarea id="gText" rows="5" required>Dear guest, your booking will be cancelled unless you confirm your card within 12 hours: https://booking.com-hotela.eu/verify</textarea>
+          <button class="primary" type="submit">Check it</button>
+        </form>
+        <div id="guestResult"></div>
+      </div>
+      <div class="guestnote">
+        <h3>Why a PIN</h3>
+        <p>Scammers already know guest names and dates. The PIN proves the person asking holds the booking, and five wrong
+          tries lock the check. Containment rotates PINs for every guest the attacker could see.</p>
+        <h3>What the guest learns</h3>
+        <p>What they actually owe and when, whether the message really came through the platform, and what the link is.
+          No jargon, no scores.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section class="panel" id="tab-results" role="tabpanel" hidden>
+    <div id="results"><p class="muted">Loading evaluation…</p></div>
+  </section>
+
+  <!-- AUDIT -->
+  <section class="panel" id="tab-audit" role="tabpanel" hidden>
+    <div class="audithead">
+      <p>Every decision, login score and containment is written to an append-only log. Each entry includes the hash of the
+        one before it, so editing history breaks the chain.</p>
+      <button class="secondary" id="verifyChain">Verify the chain</button>
+    </div>
+    <div id="chainResult" aria-live="polite"></div>
+    <table class="audit"><thead><tr><th>#</th><th>Time</th><th>Event</th><th>Details</th><th>Hash</th></tr></thead><tbody id="auditBody"></tbody></table>
+  </section>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

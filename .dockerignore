@@ -1,0 +1,4 @@
+.git
+stayguard.db*
+models/
+__pycache__

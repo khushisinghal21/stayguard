@@ -1,0 +1,12 @@
+services:
+  stayguard:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      STAYGUARD_ANTHROPIC_API_KEY: ${STAYGUARD_ANTHROPIC_API_KEY:-}
+      STAYGUARD_LLM_MODEL: ${STAYGUARD_LLM_MODEL:-claude-haiku-5-5}
+      STAYGUARD_API_KEY: ${STAYGUARD_API_KEY:-}
+      STAYGUARD_DB: /data/stayguard.db
+    volumes: ["stayguard-data:/data"]
+volumes:
+  stayguard-data:
