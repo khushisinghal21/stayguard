@@ -41,7 +41,8 @@ Hand-written by us (and labelled as such): hotel message seeds for training (EN/
 115-message **dev** set written alongside the rules; a 124-message **held-out v1** set (`data/curated/HELDOUT_SOURCES.md`;
 of its 66 scams, 10 reuse wording quoted in a cited report and the rest paraphrase reported patterns or were written
 by us) committed before its first run and blind only for that first run; a
-148-message **held-out v2** set written by a separate agent that never saw the code, from cited reports
+148-message **held-out v2** set written by a separate agent instructed not to read the code (it reports it did not;
+same model family; brief in `docs/HELDOUT_V2_BRIEF.md`), from cited reports
 (`data/curated/HELDOUT_V2_SOURCES.md`), committed before its only blind run; a red-team corpus
 (`tests/adversarial/corpus.py`); and synthetic login telemetry (real account-takeover logs are private). Every live
 feed is pinned by SHA-256 in `data/MANIFEST.json`, and reports refuse to compare across different feed snapshots.
@@ -52,23 +53,25 @@ feed is pinned by SHA-256 in `data/MANIFEST.json`, and reports refuse to compare
 | | |
 |---|---|
 | Held-out v1 scams caught, first blind run (frozen before any v1 result was seen; 95% CI) | **66.7%** of 66 (54.7%-76.8%), wrongly held 1.7% |
+| Held-out v1 first blind run vs its own classifier, same 66 scams (`eval/reconstruct_first_look.py`): full system caught / classifier alone would have caught (paired McNemar p) | 44 / 57 (p = 0.00024) |
 | Held-out v1 scams caught now (NOT blind: later fixes targeted its first-run misses) | 87.9% of 66 |
 | Held-out v1 legitimate messages wrongly held / delivered with a warning (now) | 1.7% / 3.5% |
 | Held-out v1, same messages: StayGuard's classifier alone caught / wrongly held | 84.9% / 0% |
 | Held-out v1, same messages: generic spam filter caught / wrongly held | 19.7% / 1.7% |
 | Held-out v1: phishing blocklist alone caught (uninformative: 0 of its 35 URLs are in the feeds) | 0% |
-| Held-out v1 scams caught with the AI judges down | 72.7% |
+| Held-out v1 scams caught with the AI judges down (not blind) | 72.7% |
 | Held-out v1 scams caught after rewriting (no deadline + fresh domain + leetspeak), not blind: all / changed only | 65.1% / 65.1% |
 | Dev set (written alongside the rules, near-duplicates of some training seeds, used in calibration): caught / wrongly held | 100% / 0% |
-| Real everyday SMS wrongly held (1,130 messages, domain-shifted; 95% CI) | 0% (0.00%-0.34%) |
+| Real everyday SMS wrongly held (1,130 messages, domain-shifted; used as a check during rule work, and one rule was narrowed because of it; 95% CI) | 0% (0.00%-0.34%) |
 | Unseen legit domains flagged (99,969 domains, ranks 110k-210k) | 0.007% |
 | Unseen legit domains containing a travel-brand word flagged (49 domains) | 8.2% |
 | Unseen Booking look-alike phishing hosts flagged, blocklist off (182 hosts) | 88.5% |
 | Random phishing hosts from the whole feed flagged, blocklist off | 4.9% |
-| Messages sent to the AI judges / estimated LLM cost per 1,000: hotel messages (held-out v1) | 14.5% / $0.0284 |
-| Same on the SMS-heavy 1,000-message mix | 0.9% / $0.0018 (vs $0.1925 if every message went to the judges) |
-| Evaluation messages that crashed and failed closed (counted as caught if non-zero) | 0 |
-| Latency p50 / p95, in-process with the offline judge on the SMS-heavy mix (a hosted LLM would add an estimated 1-3 s to every judged message, so p95 on hotel messages would be seconds) | 3.4 ms / 6.6 ms |
+| Messages sent to the AI judges / estimated LLM cost per 1,000: hotel messages (held-out v1) | 14.5% / $0.0288 |
+| Same on the SMS-heavy 1,000-message mix | 0.9% / $0.0018 (vs $0.1956 if every message went to the judges) |
+| Legit held-out v1 messages with a common emoji added (❤️, 👍, 👨‍👩‍👧 …): warned / held | 3.5% / 1.7% |
+| Evaluation checks that crashed and failed closed, across every run and rewrite (would count as caught) | 0 |
+| Latency p50 / p95, in-process with the offline judge on the SMS-heavy mix (a hosted LLM would add an estimated 1-3 s to every judged message, so p95 on hotel messages would be seconds) | 3.4 ms / 7.3 ms |
 <!-- results:end -->
 
 ### Honest caveats
@@ -77,8 +80,9 @@ feed is pinned by SHA-256 in `data/MANIFEST.json`, and reports refuse to compare
    Held-out v1 caught <!-- num:heldout_first_look_caught -->66.7%<!-- /num --> of scams on its first blind run. A later
    commit then fixed exactly its first-run misses with patterns that appear only in that set (review round 1, finding
    C1), so today's v1 figure of <!-- num:heldout_caught -->87.9%<!-- /num --> is a tuned number, not a blind one.
-   Held-out v2 was written after that by an agent with no access to the code and run once; its frozen first run is the
-   number to quote.
+   Held-out v2 was written after that by an agent instructed not to read the code, and is run exactly once, after the
+   last review round; its frozen first run is the number to quote. Its text was never seen, but its brief and language
+   mix were known while later rules were written, so it is less blind than "never seen" suggests (DECISIONS #35).
 2. **The classifier alone does most of the work on these sets.** On held-out v1 StayGuard's own classifier, with no
    rules, links or judges, caught <!-- num:heldout_classifier_only_caught -->84.9%<!-- /num --> (paired McNemar against the
    full system today: p = <!-- num:heldout_mcnemar_p -->0.73<!-- /num -->). On v1's only blind run it was worse than that:
@@ -115,7 +119,8 @@ feed is pinned by SHA-256 in `data/MANIFEST.json`, and reports refuse to compare
   (CLAUDE.md invariant 2): the hotel is told to use the platform's own payment flow instead. Held-out v2 measures how
   often it happens (`legit_payment` category in `eval/report.md`).
 - **Travel-brand words in unfamiliar domains are flagged**: <!-- num:c3_heldout_brand_fp -->8.2%<!-- /num --> of unseen
-  legitimate domains containing a travel-brand word, vs 0.006% of all unseen legitimate domains.
+  legitimate domains containing a travel-brand word, vs <!-- num:c3_heldout_fp -->0.007%<!-- /num --> of all unseen legitimate
+  domains.
 - **The guest-check PIN** is 4 digits: if the database leaked, the salted hashes fall to 10,000 guesses. The real
   protection is the attempt limits: 5 wrong PINs per client per booking, 20 per client, 50 per booking from all
   clients, all per 15 minutes; and 10 successful checks per booking per day, so the checker cannot be used as an

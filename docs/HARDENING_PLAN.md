@@ -124,7 +124,7 @@ Updated as each item lands — see the bottom of this file.
 | 1 | Predictable PINs | Fixed | `after_phase1_repro.txt`: no `pin` column, hashed + salted |
 | 2 | Open demo/admin endpoints | Fixed | production mode: demo-pin 404, simulate 404, internal 503 without key |
 | 3 | Idempotency bypass | Fixed | reused key + new text → 409; test rewritten |
-| 4 | Eval tuned on test sets | Fixed, with a deviation | dev/held-out everywhere; held-out committed (`04376a3`) before first run; first look frozen; C3 held-out moved to ranks 110k–210k because both halves of 10k–110k had been read |
+| 4 | Eval tuned on test sets | Partly: held-out v1 was later tuned on (DECISIONS #28), hence v2 | dev/held-out everywhere; held-out committed (`04376a3`) before first run; first look frozen; C3 held-out moved to ranks 110k–210k because both halves of 10k–110k had been read |
 | 5 | Live feeds unreproducible | Fixed | `data/MANIFEST.json`; report stores manifest hash; `--compare` refuses drift |
 | 6 | Judge errors swallowed | Fixed | judge bug → hold `SYSTEM_EXCEPTION_FAIL_CLOSED`, breaker untouched; provider down → degraded, breaker +1 |
 | 7 | No top-level fail-closed | Fixed | classifier exception → hold; dead branch removed; `_touches_money_or_links` |

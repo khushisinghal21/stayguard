@@ -1,0 +1,26 @@
+{
+  "first_look_commit": "fe4a82e",
+  "n_scams": 66,
+  "thresholds": {
+    "first_look_model_high": {
+      "model_high": 0.46,
+      "full_system_caught": 44,
+      "classifier_alone_caught": 57,
+      "mcnemar": {
+        "only_first": 0,
+        "only_second": 13,
+        "p_value": 0.00024
+      }
+    },
+    "current_model_high": {
+      "model_high": 0.52,
+      "full_system_caught": 44,
+      "classifier_alone_caught": 57,
+      "mcnemar": {
+        "only_first": 0,
+        "only_second": 13,
+        "p_value": 0.00024
+      }
+    }
+  }
+}

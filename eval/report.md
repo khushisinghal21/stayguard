@@ -1,10 +1,10 @@
 # StayGuard evaluation report
 
-Generated 2026-10-27 17:53 at commit `d98608d`. Reproduce with `python -m eval.evaluate`.
+Generated 2026-10-27 18:19 at commit `b8cff59`. Reproduce with `python -m eval.evaluate`.
 Data manifest `c0cc5d1b1f71ce5d` (feeds fetched 2026-10-27T06:19:37+0000). Held-out set sha256 `9defc0ab5ab31ab4...`, committed in `04376a3`.
 Model thresholds: MODEL_LOW 0.03, MODEL_HIGH 0.52 (eval/calibration.json).
 
-**Dev** data was looked at while the rules were built, so dev numbers are optimistic. **Held-out v1** was blind only for its first run: later fixes were made after its misses were read (review round 1, finding C1), so only its frozen first look is a blind number. **Held-out v2** was written afterwards by an agent with no access to the code and committed before its first run; its first run is frozen too.
+**Dev** data was looked at while the rules were built, so dev numbers are optimistic. **Held-out v1** was blind only for its first run: later fixes were made after its misses were read (review round 1, finding C1), so only its frozen first look is a blind number. **Held-out v2** was written afterwards by an agent instructed not to read the code (self-reported; same model family), committed before its first run, and run once; its first run is frozen. Its text was never seen, but its language mix and brief were known while later rules were written (DECISIONS #35).
 
 ## A. Messages: StayGuard vs baselines (dev and held-out v1)
 
@@ -82,6 +82,12 @@ Held-out misses, false holds and warned legit messages:
 
 Dev misses, false holds and warned legit messages:
 
+- `g122` (legit_payment_talk, en) label=0 -> **warn** via judges ['JUDGES_LEGIT', 'REASSURANCE_NEXT_TO_PAYMENT']: Please note the municipal tourist tax of 2 EUR per person per night is payable at the hotel on arrival.
+- `g124` (legit_payment_talk, en) label=0 -> **warn** via judges ['JUDGES_LEGIT', 'REASSURANCE_NEXT_TO_PAYMENT']: An airport transfer costs 35 EUR for up to 4 people. If you'd like one, tell us your flight number and pay the
+- `g126` (legit_payment_talk, en) label=0 -> **warn** via judges ['JUDGES_LEGIT', 'REASSURANCE_NEXT_TO_PAYMENT']: We noticed Booking.com could not charge your card. Please update it in the Booking.com app under Payment detai
+- `g128` (legit_payment_talk, en) label=0 -> **warn** via judges ['JUDGES_LEGIT', 'REASSURANCE_NEXT_TO_PAYMENT']: Reminder: we never ask for card details or bank transfers by chat. If anyone does, please report it to Booking
+- `g132` (legit_payment_talk, en) label=0 -> **warn** via judges ['JUDGES_LEGIT', 'REASSURANCE_NEXT_TO_PAYMENT']: Hi, the boat tour you asked about costs 25 EUR per person. You can book and pay at reception the day before.
+- `g140` (legit_multilingual, hinglish) label=0 -> **warn** via judges ['JUDGES_LEGIT', 'REASSURANCE_NEXT_TO_PAYMENT']: Aapka payment Booking.com se ho chuka hai, hotel pe kuch pay nahi karna. Breakfast free hai.
 - `g154` (legit_payment_talk, en) label=0 -> **warn** via judges ['JUDGES_UNSURE']: Our card machine is working again, so you can pay by card when you arrive, no need to bring cash.
 
 ## B. Real everyday messages (UCI SMS test split)
@@ -132,9 +138,9 @@ Synthetic data is separable by construction, so this is a plumbing check, not ev
 
 ## E. Cost and latency (970 SMS test-split messages + 30 held-out scams)
 
-- Paths: {'rule': 986, 'model': 5, 'judges': 9}; share sent to the AI judges: **0.9%** on this SMS-heavy mix, **14.5%** on the held-out v1 hotel messages (estimated $0.0284 per 1,000 at that share).
-- Latency p50 3.38 ms, p95 6.56 ms, p99 9.58 ms
-- **Estimated** LLM cost: $0.0018 per 1,000 messages, vs $0.1925 if every message went to the judges ($0.000196 per judged message). Price: Claude Haiku 5.5 $0.1/MTok in, $0.5/MTok out (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-27).
+- Paths: {'rule': 986, 'model': 5, 'judges': 9}; share sent to the AI judges: **0.9%** on this SMS-heavy mix, **14.5%** on the held-out v1 hotel messages (estimated $0.0288 per 1,000 at that share).
+- Latency p50 3.44 ms, p95 7.28 ms, p99 11.5 ms
+- **Estimated** LLM cost: $0.0018 per 1,000 messages, vs $0.1956 if every message went to the judges ($0.000199 per judged message). Price: Claude Haiku 5.5 $0.1/MTok in, $0.5/MTok out (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-27).
 - ESTIMATE, not a bill: input tokens = prompt characters / 4, output = 150 tokens per judge, 2 judges. Latency is in-process, excludes network and DB, and the judge path ran the offline judge; a hosted LLM adds roughly 1-3 s to judged messages only.
 
 ## Classifier and calibration

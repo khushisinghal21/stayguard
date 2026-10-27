@@ -174,3 +174,61 @@ price ($0.10 / $0.50 per MTok) is correct.
   this shared machine also varies run to run (reviewer C measured 3.2 ms on the unchanged round-1 code).
 - Random feed hosts flagged with the blocklist off (C2) rose from 3.8% to 4.9% and unseen legit domains flagged from
   0.006% to 0.007%, from the tenant-subdomain and hosted-link rules.
+
+---
+
+## Round 3 (reviewed `4581705`, each reviewer on its own `git archive` export; fixes in `f970612`, `b8cff59` and the round-3 docs commit)
+
+Reported CONFIRMED: A 9, B 2, C 12 (23), plus one SPECULATIVE (A10). Every A and B finding has a regression test in
+`tests/test_review_round3.py`; run against `4581705`, all of them fail there except the coverage tests for round-2
+lexicon additions, which C3-2 asked for. Round 2's verdicts on held-out v1's blind run were checked again by C and
+corrected (C11).
+
+### A — Staff engineer
+
+| # | Where | Sev | Scenario (as reported) | Verdict | What we did |
+|---|---|---|---|---|---|
+| A1 | `signals.py:572-576, 804-809, 847` | CRITICAL | Round-2 fix still incomplete: `IMPERATIVE` lacked "pay"; an ask *before* the reassurance was dropped; any tail starting "to"/"for" was skipped; layer 3 covered only card and rail words. "Your stay is fully paid at the property pay the 80 EUR city tax at <link> before arrival" → deliver clean, judges up or down, and the guest checker said "looks safe". | CONFIRMED | `pay`, `settle`, `complete`, `click` and others added; the clause head before the reassurance is read; a tail is skipped only when its verb is the reassurance's own object; a whole-sentence shadow reading marks any payment ask that only a reassurance hid; such messages are never delivered without a banner (`REASSURANCE_NEXT_TO_PAYMENT`). `test_an_ask_before_or_after_a_reassurance_is_never_delivered_clean` |
+| A2 | `judges.py:340` | HIGH | Round-2 cap cut judge input at 4,000 characters while the API accepts 5,000: 4,100 characters of house guide then the ask, and the judge never saw the ask (stub provider). | CONFIRMED | Cap equals the API limit, so nothing a rule saw is hidden from the judges. `test_judges_see_everything_a_rule_saw` |
+| A3 | `signals.py:847`, `extract()` | HIGH | `reassured_sensitive` wasn't carried over from the de-obfuscated pass ("…until we receive your c@rd numb3r" → deliver clean); the plain form reached the judges and the offline judge delivered it. | CONFIRMED | Flag carried over; the banner floor from A1 applies whatever the judge says. `test_a_leetspeak_card_request_next_to_a_reassurance_is_not_delivered_clean`, `test_a_plain_reassured_card_request_is_at_least_warned_whatever_the_judge_says` |
+| A4 | `links.py:499`, `engine.py:316` | HIGH | Round-2 tenant rule gave unlisted platforms 0.1 ("safe"), mattered only with an instruction word, and checked only the leftmost label: `www.lisbonhotel.livejournal.com` regained the popularity discount. Whether `www.<tenant>` resolves on real platforms: SPECULATIVE. | CONFIRMED (code) | Every subdomain label is checked; a tenant scores at least 0.3 (never "safe"); two-letter language hosts (`pt.wikipedia.org`) stay safe. `test_tenants_on_popular_platforms_are_never_safe_even_behind_www` |
+| A5 | `service.py:260-293` | MED | Session status read once at the start; a message in flight while containment committed was delivered after the revoke, outside the case file. | CONFIRMED (injected interleaving) | Re-checked inside the insert transaction; a revoked session's message is blocked. `test_a_message_in_flight_when_containment_commits_is_not_delivered` |
+| A6 | `signals.py:526` | MED | Round-1 userinfo fix missed scheme-less links: `www.booking.com@keyroom-lisboa.com/k` masked as `[EMAIL]`, hiding the real host. | CONFIRMED | An "e-mail" followed by a path or starting with `www.` is a link. `test_schemeless_userinfo_link_is_not_masked_as_an_email` |
+| A7 | `links.py:311` | MED-LOW | `https://www.booking.com?u=https://evil` — the path search landed inside the embedded scheme and the target was lost (also at `531d054`). | CONFIRMED (code) | Port stripped, everything after the host kept. `test_redirect_target_right_after_the_host_is_checked` |
+| A8 | `signals.py:495` | LOW | Round-2 claim "any single separator" was false: `4111 / 1111 …`, `|`, `*`, `:` left cards unmasked in storage and the audit log. | CONFIRMED | Up to three non-alphanumeric characters between digits (Luhn still required). `test_cards_with_wider_separators_are_masked` |
+| A9 | `db.py:343-348` | LOW | Round-2 anchor-after-commit could leave a committed, unanchored tail row (a crash between them), reopening round-1 A15; `audit()` raised after committing. | CONFIRMED (simulated) | Anchor back inside the transaction (a failed anchor write rolls the row back); verification waits briefly for a writer between anchor and commit, so round-2 A8 stays fixed. `test_a_failed_anchor_write_rolls_the_audit_row_back`, `test_audit_verify_is_not_fooled_by_concurrent_appends` |
+| A10 | `judges.py:348, 391-395` | MED | Doubling `max_tokens` with a 3 s timeout lets content push generation past the deadline; timeouts still feed the shared breaker. | SPECULATIVE (needs a real model) | Partly addressed: judges are asked for at most three quotes of at most 80 characters. Timeouts stay provider failures (a slow provider is a provider problem). Residual, listed in the book's weaknesses chapter. |
+
+### B — Scammer
+
+| # | Where | Sev | Scenario | Verdict | What we did |
+|---|---|---|---|---|---|
+| B1 | `signals.py:820`, `engine.py:319-349` | HIGH | Passive demand with no instruction verb: "A 50 EUR arrival fee is payable to our account frontdesk@… ahead of check-in to keep your room" → deliver clean, judges up or down, also via the API; also "can be settled to", "goes to", and unlisted rails (PayID, Interac, Yape). | CONFIRMED | A payment sentence that names a destination (an account, an e-mail, "payable/settled/transferred to…") or says it is due before arrival is an ask. `test_a_payment_written_as_a_fact_is_still_a_demand`; pay-at-hotel mentions still pass, `test_pay_at_hotel_mentions_are_not_demands`. |
+| B2 | `signals.py:268` | MED | "…just give our front desk a quick ring on +351 211 234 567" → deliver clean with no signal (only "call us on" was known). | CONFIRMED | Phone handoffs are their own flag; such messages always go to the judges, never the fast path or the model's low-risk path. Not a hard rule, because hotels share numbers. `test_a_phone_handoff_is_flagged_and_judged_never_fast_pathed`. **Residual:** the offline judge delivers the calm version as legitimate; with real judges unmeasured. First attempt (reusing the off-platform-contact flag) made the model hold "Phone: +351…" contact lines, so it was not kept. "For late arrival please call us on +351…" was already held by the model before this round (a known false hold). |
+
+### C — Skeptical judge
+
+| # | Where | Sev | Claim → evidence | Verdict | What we did |
+|---|---|---|---|---|---|
+| C1 | README caveat 3, report.md | HIGH | Round-1's invisible-character fix covered the variation selector in ❤️ ☺️ ☀️ and the joiner in 👨‍👩‍👧, so emoji made legit messages "obfuscated": appending ❤️ to v1's legit messages warned 57 of 58. No evaluation set contained an emoji. The zero-width mutation row's "checks the stripping" text was misleading. | CONFIRMED | Hidden-character flag ignores emoji sequences, subdivision flags and Indic/Arabic joiners (still stripped); the report measures legit messages with emoji appended (3.4% warned on v1, the same as without). DECISIONS #36. `test_emoji_and_script_joiners_are_not_obfuscation`, `test_real_hidden_characters_are_still_flagged` |
+| C2 | DECISIONS #29, README, HELDOUT_V2_BRIEF | HIGH | v2 is blind to its text but not to its specification: the brief named its 14 languages, its composition was in the commit message, and `052e66b` then added transfer words and currencies for exactly those languages with no finding asking for them, and no tests. | CONFIRMED (exposure); effect on v2 SPECULATIVE | Admitted in DECISIONS #35 and README caveat 1; additions kept (they are correct) and now tested; v2's per-language results are in the report so the effect can be judged. |
+| C3 | `evaluate.py`, `config.py` | MED | The one-shot protocol was honour-system: freeze goes to whatever checkout runs, no dirty-tree check, nothing ties the frozen file to `a0ef0f5`, a re-run's non-blind section sat in `report.json` unmarked. | CONFIRMED | Blind run refuses a dirty tree or a file whose SHA-256 differs from `a0ef0f5`; a test checks the frozen file against it; a re-run goes to `A_messages_heldout_v2_rerun_NOT_BLIND`, which nothing renders. |
+| C4 | DECISIONS #14 | MED | HIGH is set by dev (5 of the 7 legit above it), not SMS; SMS alone gives 0.28. The decline rested on a false premise; dropping dev is principled. | CONFIRMED | #14 corrected. **Declined again with the corrected reason:** dropping dev gives an SMS-only HIGH of 0.28 with no hotel evidence, which would hold most hotel messages the model dislikes; neither option is well founded, so the pre-registered rule stays and its weakness is stated. |
+| C5 | README row, `evaluate.py` docstring | MED | The SMS test split was used as a development check (and narrowed `pix`) but presented as untouched. | CONFIRMED | Relabelled in the README row, the docstring and DECISIONS #34. It happened again this round ("go to" held a personal SMS; narrowed in `b8cff59`). |
+| C6 | DECISIONS #29, README, `evaluate.py`, `render_docs.py` | MED | "No access to the code" overstated: the author was instructed not to read it and self-reported. | CONFIRMED | Reworded everywhere to "instructed not to read the code; self-reported; same model family". |
+| C7 | README caveat 1 | LOW-MED | Said v2 was "run once" when it had not been run (round-2 C2 fix incomplete). | CONFIRMED | Reworded to "is run exactly once, after the last review round" — true before and after. |
+| C8 | `render_docs.py` | LOW-MED | v2 baseline rows showed catches only; classifier false holds and the legit-holds paired test were computed but never rendered. | CONFIRMED | Both rendered. |
+| C9 | README:117-118, DECISIONS #8 | LOW | Typed "0.006%" is the tuned dev range (held-out is 0.007%); "never-examined" is loose since flagged examples have been printed. | CONFIRMED | Rendered from the report; wording corrected. |
+| C10 | `evaluate.py:724-727` | LOW | The crash count covered only some runs. | CONFIRMED (no current impact: 0 elsewhere too) | Every system run and every rewrite is counted. |
+| C11 | ADVERSARIAL_REVIEW round 2, DECISIONS #33 | LOW | Round-2 C1's numbers (58/66, 0 vs 14, p = 0.00012) were accepted without reproduction; C's reconstruction gives 57/66, 0 vs 13, p = 0.00024. | CONFIRMED | `eval/reconstruct_first_look.py` now reproduces it from the first-look commit: **57 vs 44, 0 vs 13, p = 0.00024**, rendered in the README. The round-2 row above keeps the reviewer's original figures as reported. |
+| C12 | DECISIONS #13, `evaluate.py`, HARDENING_PLAN, README | LOW | Stale claims: "a held-out set nobody tuned on", "built from cited reports", "held-out data was not looked at", "Eval tuned on test sets: Fixed", judges-down row without "not blind". | CONFIRMED | All corrected. |
+
+C also confirmed as sound: report.md is byte-identical to `to_md(report.json)`; `render_docs --check` passes; the McNemar
+implementation is right; no v2 code path reads v1 or v2 text; the v1 first look's provenance; every typed dataset fact
+it checked; and that the held-out link numbers equal the frozen first look.
+
+### Round-3 side effects
+
+- The passive-payment rule first matched "go to" and held one personal SMS in the SMS test split; narrowed to require
+  an explicit destination (`b8cff59`, DECISIONS #34).
+- Hotel messages reaching the judges stayed at 14.5% on v1 after that narrowing (15.3% before it).

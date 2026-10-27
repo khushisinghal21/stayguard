@@ -1,7 +1,7 @@
 {
-  "generated": "2026-10-27 17:53",
+  "generated": "2026-10-27 18:19",
   "fast": false,
-  "git_commit": "d98608d",
+  "git_commit": "b8cff59",
   "heldout_sha256": "9defc0ab5ab31ab49d821b73ff795153cda580b09b1b3d40fd7b81e89d0b6a5c",
   "heldout_commit": "04376a3",
   "data": {
@@ -75,8 +75,9 @@
           "false_alarm_rate": 0.0,
           "precision": 1.0,
           "f1": 1.0,
-          "legit_warned_rate": 0.0182,
+          "legit_warned_rate": 0.1273,
           "scam_warned_not_held_rate": 0.0,
+          "fail_closed": 0,
           "catch_rate_ci95": [
             0.9398,
             1.0
@@ -105,8 +106,9 @@
           "false_alarm_rate": 0.0,
           "precision": 1.0,
           "f1": 1.0,
-          "legit_warned_rate": 0.0182,
-          "scam_warned_not_held_rate": 0.0
+          "legit_warned_rate": 0.1273,
+          "scam_warned_not_held_rate": 0.0,
+          "fail_closed": 0
         },
         "stayguard_degraded_llm_down": {
           "tp": 60,
@@ -117,8 +119,9 @@
           "false_alarm_rate": 0.0,
           "precision": 1.0,
           "f1": 1.0,
-          "legit_warned_rate": 0.1091,
-          "scam_warned_not_held_rate": 0.0
+          "legit_warned_rate": 0.1818,
+          "scam_warned_not_held_rate": 0.0,
+          "fail_closed": 0
         }
       },
       "per_category": {
@@ -190,16 +193,16 @@
           "n": 17,
           "correct": 17,
           "held": 0,
-          "warned": 1,
-          "clean": 16,
+          "warned": 6,
+          "clean": 11,
           "accuracy": 1.0
         },
         "legit_multilingual": {
           "n": 11,
           "correct": 11,
           "held": 0,
-          "warned": 0,
-          "clean": 11,
+          "warned": 1,
+          "clean": 10,
           "accuracy": 1.0
         },
         "legit_guest": {
@@ -254,9 +257,9 @@
         }
       },
       "paths": {
-        "rule": 106,
+        "rule": 102,
         "model": 3,
-        "judges": 6
+        "judges": 10
       },
       "paired_tests": {
         "full_vs_classifier_only_on_scams": {
@@ -271,6 +274,84 @@
         }
       },
       "errors_and_warnings": [
+        {
+          "id": "g122",
+          "label": 0,
+          "decision": "warn",
+          "path": "judges",
+          "reasons": [
+            "JUDGES_LEGIT",
+            "REASSURANCE_NEXT_TO_PAYMENT"
+          ],
+          "category": "legit_payment_talk",
+          "lang": "en",
+          "text": "Please note the municipal tourist tax of 2 EUR per person per night is payable at the hotel on arrival."
+        },
+        {
+          "id": "g124",
+          "label": 0,
+          "decision": "warn",
+          "path": "judges",
+          "reasons": [
+            "JUDGES_LEGIT",
+            "REASSURANCE_NEXT_TO_PAYMENT"
+          ],
+          "category": "legit_payment_talk",
+          "lang": "en",
+          "text": "An airport transfer costs 35 EUR for up to 4 people. If you'd like one, tell us your flight number and pay the driver directly."
+        },
+        {
+          "id": "g126",
+          "label": 0,
+          "decision": "warn",
+          "path": "judges",
+          "reasons": [
+            "JUDGES_LEGIT",
+            "REASSURANCE_NEXT_TO_PAYMENT"
+          ],
+          "category": "legit_payment_talk",
+          "lang": "en",
+          "text": "We noticed Booking.com could not charge your card. Please update it in the Booking.com app under Payment details. We never ask for card numbers by message."
+        },
+        {
+          "id": "g128",
+          "label": 0,
+          "decision": "warn",
+          "path": "judges",
+          "reasons": [
+            "JUDGES_LEGIT",
+            "REASSURANCE_NEXT_TO_PAYMENT"
+          ],
+          "category": "legit_payment_talk",
+          "lang": "en",
+          "text": "Reminder: we never ask for card details or bank transfers by chat. If anyone does, please report it to Booking.com."
+        },
+        {
+          "id": "g132",
+          "label": 0,
+          "decision": "warn",
+          "path": "judges",
+          "reasons": [
+            "JUDGES_LEGIT",
+            "REASSURANCE_NEXT_TO_PAYMENT"
+          ],
+          "category": "legit_payment_talk",
+          "lang": "en",
+          "text": "Hi, the boat tour you asked about costs 25 EUR per person. You can book and pay at reception the day before."
+        },
+        {
+          "id": "g140",
+          "label": 0,
+          "decision": "warn",
+          "path": "judges",
+          "reasons": [
+            "JUDGES_LEGIT",
+            "REASSURANCE_NEXT_TO_PAYMENT"
+          ],
+          "category": "legit_multilingual",
+          "lang": "hinglish",
+          "text": "Aapka payment Booking.com se ho chuka hai, hotel pe kuch pay nahi karna. Breakfast free hai."
+        },
         {
           "id": "g154",
           "label": 0,
@@ -333,6 +414,7 @@
           "f1": 0.928,
           "legit_warned_rate": 0.0345,
           "scam_warned_not_held_rate": 0.0909,
+          "fail_closed": 0,
           "catch_rate_ci95": [
             0.7786,
             0.9373
@@ -362,7 +444,8 @@
           "precision": 0.9831,
           "f1": 0.928,
           "legit_warned_rate": 0.0345,
-          "scam_warned_not_held_rate": 0.0909
+          "scam_warned_not_held_rate": 0.0909,
+          "fail_closed": 0
         },
         "stayguard_degraded_llm_down": {
           "tp": 48,
@@ -374,7 +457,8 @@
           "precision": 0.9796,
           "f1": 0.8348,
           "legit_warned_rate": 0.0345,
-          "scam_warned_not_held_rate": 0.2424
+          "scam_warned_not_held_rate": 0.2424,
+          "fail_closed": 0
         }
       },
       "per_category": {
@@ -556,9 +640,9 @@
         }
       },
       "paths": {
-        "rule": 93,
+        "rule": 92,
         "judges": 18,
-        "model": 13
+        "model": 14
       },
       "paired_tests": {
         "full_vs_classifier_only_on_scams": {
@@ -733,8 +817,8 @@
     "real_spam": {
       "n": 163,
       "decisions": {
-        "warn": 97,
-        "deliver": 28,
+        "warn": 98,
+        "deliver": 27,
         "hold": 38,
         "block": 0
       },
@@ -743,7 +827,7 @@
         0.1748,
         0.3037
       ],
-      "warned_rate": 0.5951,
+      "warned_rate": 0.6012,
       "fail_closed": 0
     }
   },
@@ -872,22 +956,23 @@
       "judges": 9
     },
     "judge_share": 0.009,
-    "p50_ms": 3.38,
-    "p95_ms": 6.56,
-    "p99_ms": 9.58,
-    "est_cost_per_judged_message_usd": 0.000196,
+    "p50_ms": 3.44,
+    "p95_ms": 7.28,
+    "p99_ms": 11.5,
+    "est_cost_per_judged_message_usd": 0.000199,
     "est_cost_per_1000_messages_usd": 0.0018,
-    "est_cost_per_1000_if_every_message_went_to_llm_usd": 0.1925,
+    "est_cost_per_1000_if_every_message_went_to_llm_usd": 0.1956,
     "price_source": "Claude Haiku 5.5 $0.1/MTok in, $0.5/MTok out (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-27)",
     "note": "ESTIMATE, not a bill: input tokens = prompt characters / 4, output = 150 tokens per judge, 2 judges. Latency is in-process, excludes network and DB, and the judge path ran the offline judge; a hosted LLM adds roughly 1-3 s to judged messages only.",
     "hotel_heldout_judge_share": 0.1452,
-    "hotel_heldout_est_cost_per_1000_usd": 0.0284
+    "hotel_heldout_est_cost_per_1000_usd": 0.0288
   },
   "F_robustness": {
     "dev": {
       "no_urgency": {
         "n": 60,
         "n_changed": 25,
+        "fail_closed": 0,
         "catch_rate": 1.0,
         "catch_rate_changed_only": 1.0,
         "missed_ids": []
@@ -895,6 +980,7 @@
       "neutral_new_domain": {
         "n": 60,
         "n_changed": 33,
+        "fail_closed": 0,
         "catch_rate": 1.0,
         "catch_rate_changed_only": 1.0,
         "missed_ids": []
@@ -902,6 +988,7 @@
       "leetspeak": {
         "n": 60,
         "n_changed": 57,
+        "fail_closed": 0,
         "catch_rate": 0.9833,
         "catch_rate_changed_only": 0.9825,
         "missed_ids": [
@@ -911,6 +998,7 @@
       "zero_width": {
         "n": 60,
         "n_changed": 60,
+        "fail_closed": 0,
         "catch_rate": 1.0,
         "catch_rate_changed_only": 1.0,
         "missed_ids": []
@@ -918,6 +1006,7 @@
       "spaced_letters": {
         "n": 60,
         "n_changed": 56,
+        "fail_closed": 0,
         "catch_rate": 0.9833,
         "catch_rate_changed_only": 0.9821,
         "missed_ids": [
@@ -927,6 +1016,7 @@
       "combined": {
         "n": 60,
         "n_changed": 60,
+        "fail_closed": 0,
         "catch_rate": 0.9833,
         "catch_rate_changed_only": 0.9833,
         "missed_ids": [
@@ -937,12 +1027,18 @@
         "n": 55,
         "held_rate": 0.0909,
         "warned_rate": 0.9091
+      },
+      "legit_with_emoji": {
+        "n": 55,
+        "held_rate": 0.0,
+        "warned_rate": 0.1273
       }
     },
     "heldout": {
       "no_urgency": {
         "n": 66,
         "n_changed": 30,
+        "fail_closed": 0,
         "catch_rate": 0.7879,
         "catch_rate_changed_only": 0.7667,
         "missed_ids": [
@@ -965,6 +1061,7 @@
       "neutral_new_domain": {
         "n": 66,
         "n_changed": 30,
+        "fail_closed": 0,
         "catch_rate": 0.8485,
         "catch_rate_changed_only": 0.8333,
         "missed_ids": [
@@ -983,6 +1080,7 @@
       "leetspeak": {
         "n": 66,
         "n_changed": 62,
+        "fail_closed": 0,
         "catch_rate": 0.803,
         "catch_rate_changed_only": 0.7903,
         "missed_ids": [
@@ -1004,6 +1102,7 @@
       "zero_width": {
         "n": 66,
         "n_changed": 65,
+        "fail_closed": 0,
         "catch_rate": 0.9242,
         "catch_rate_changed_only": 0.9231,
         "missed_ids": [
@@ -1017,6 +1116,7 @@
       "spaced_letters": {
         "n": 66,
         "n_changed": 60,
+        "fail_closed": 0,
         "catch_rate": 0.7576,
         "catch_rate_changed_only": 0.7333,
         "missed_ids": [
@@ -1040,6 +1140,7 @@
       "combined": {
         "n": 66,
         "n_changed": 66,
+        "fail_closed": 0,
         "catch_rate": 0.6515,
         "catch_rate_changed_only": 0.6515,
         "missed_ids": [
@@ -1064,10 +1165,16 @@
         "n": 58,
         "held_rate": 0.0172,
         "warned_rate": 0.9828
+      },
+      "legit_with_emoji": {
+        "n": 58,
+        "held_rate": 0.0172,
+        "warned_rate": 0.0345
       }
     }
   },
   "A_messages_heldout_v2": null,
+  "A_messages_heldout_v2_rerun_NOT_BLIND": null,
   "heldout_v2_sha256": null,
   "heldout_v2_commit": null,
   "classifier": {
@@ -1083,7 +1190,7 @@
     "n_sms_train": 3102,
     "n_hotel_train": 752
   },
-  "runtime_s": 49.7,
+  "runtime_s": 51.8,
   "headline": {
     "model_low": 0.03,
     "model_high": 0.52,
@@ -1112,7 +1219,7 @@
     "heldout_mcnemar_p": 0.72656,
     "judge_share": 0.009,
     "hotel_judge_share": 0.1452,
-    "hotel_est_cost_per_1000": 0.0284,
+    "hotel_est_cost_per_1000": 0.0288,
     "heldout_classifier_only_caught": 0.8485,
     "heldout_classifier_only_false_holds": 0.0,
     "heldout_blocklist_urls_listed": 0,
@@ -1128,10 +1235,18 @@
       0.0034
     ],
     "fail_closed_crashes": 0,
-    "p50_ms": 3.38,
-    "p95_ms": 6.56,
+    "legit_emoji_warned_heldout": 0.0345,
+    "legit_emoji_held_heldout": 0.0172,
+    "legit_zero_width_warned_heldout": 0.9828,
+    "first_look_full_caught_n": 44,
+    "first_look_classifier_caught_n": 57,
+    "first_look_only_classifier": 13,
+    "first_look_only_full": 0,
+    "first_look_mcnemar_p": 0.00024,
+    "p50_ms": 3.44,
+    "p95_ms": 7.28,
     "est_cost_per_1000": 0.0018,
-    "est_cost_per_1000_all_llm": 0.1925
+    "est_cost_per_1000_all_llm": 0.1956
   },
   "heldout_first_look": {
     "generated": "2026-10-27 08:07",

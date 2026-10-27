@@ -15,8 +15,8 @@ at the desk" or "you pay the driver directly".
 Rules settle almost all of an SMS-heavy mix in a few milliseconds (p50 <!-- num:p50_ms -->3.4 ms<!-- /num -->, in-process,
 offline judge). On hotel messages the rules settle less, and of what they leave the judges, not the model, settle most
 (review round 2, C7: the earlier "the model settles most of the rest" was wrong; path counts are in `eval/report.md`). The judges see only what's left (<!-- num:judge_share -->0.9%<!-- /num --> of the SMS-heavy mix, but
-<!-- num:hotel_judge_share -->15.3%<!-- /num --> of the hotel messages in held-out v1, about
-<!-- num:hotel_est_cost_per_1000 -->$0.0304<!-- /num --> per 1,000 there), which keeps
+<!-- num:hotel_judge_share -->14.5%<!-- /num --> of the hotel messages in held-out v1, about
+<!-- num:hotel_est_cost_per_1000 -->$0.0288<!-- /num --> per 1,000 there), which keeps
 the **estimated** LLM cost at <!-- num:est_cost_per_1000 -->$0.0018<!-- /num --> per 1,000 messages instead of
 <!-- num:est_cost_per_1000_all_llm -->$0.1956<!-- /num --> if every message went to the judges (published Claude Haiku 5.5 price,
 estimated token counts — an estimate, not a bill). An LLM-first design would also make an attacker's prompt
