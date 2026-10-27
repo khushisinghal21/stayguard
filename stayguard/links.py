@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from rapidfuzz import fuzz
 
@@ -206,6 +206,9 @@ class LinkVerdict:
         }
 
 
+EMBEDDED_URL = re.compile(r"(?:https?|hxxps?)://[^\s&#]+", re.IGNORECASE)
+
+
 class LinkChecker:
     def __init__(self, exclude_hosts: set[str] | None = None, use_blocklist: bool = True, extra_official: set[str] | None = None):
         self.exclude = {h.lower() for h in (exclude_hosts or set())}
@@ -228,6 +231,20 @@ class LinkChecker:
         return False
 
     def check(self, url: str, property_domains: set[str] | None = None) -> LinkVerdict:
+        """Check a link. If it carries another URL in its query string (an open redirect, even on an official
+        domain), the embedded URL is checked too and the worse verdict wins."""
+        outer = self._check(url, property_domains)
+        inner_urls = EMBEDDED_URL.findall(unquote(url.split("?", 1)[1])) if "?" in url else []
+        worst = outer
+        for inner in inner_urls[:3]:
+            v = self._check(inner, property_domains)
+            if v.score > worst.score or (worst.verdict == "official" and v.verdict != "official"):
+                worst = LinkVerdict(
+                    url, outer.host, outer.registered_domain, v.verdict, max(v.score, 0.3), [f"REDIRECTS_TO:{v.host}", *v.reasons]
+                )
+        return worst
+
+    def _check(self, url: str, property_domains: set[str] | None = None) -> LinkVerdict:
         host = host_of(url)
         rd = registered_domain(host) if host else ""
         reasons: list[str] = []

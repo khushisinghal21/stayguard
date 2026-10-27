@@ -12,7 +12,7 @@ import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from .domains import is_public_host
+from .domains import EXTRACT, is_public_host
 
 # ----------------------------------------------------------------------------------------------
 # Normalisation
@@ -53,10 +53,19 @@ CONFUSABLES = str.maketrans(
 
 
 def normalise(text: str) -> str:
-    """NFKC + strip zero-width characters + map look-alike letters. Keeps length roughly stable."""
+    """NFKC + strip zero-width characters + map look-alike letters. Keeps length roughly stable.
+
+    Look-alike mapping is applied only to words that MIX Latin with Cyrillic/Greek ("Вooking"). Mapping every
+    word would turn real Russian or Greek text into Latin-Cyrillic soup that no Russian pattern can match."""
     t = unicodedata.normalize("NFKC", text)
     t = ZERO_WIDTH.sub("", t)
-    return t.translate(CONFUSABLES)
+    return re.sub(r"\w+", lambda m: m.group().translate(CONFUSABLES) if _mixes_scripts(m.group()) else m.group(), t)
+
+
+def _mixes_scripts(word: str) -> bool:
+    latin = any(ch.isascii() and ch.isalpha() for ch in word)
+    other = any("\u0370" <= ch <= "\u04ff" for ch in word)
+    return latin and other
 
 
 def has_mixed_script_word(text: str) -> list[str]:
@@ -142,6 +151,23 @@ CARD_DATA = _rx(
     r"(?:confirm|verific|valid)\w* (?:o |el |la |os |los )?(?:seu |su )?(?:cartão|tarjeta)",
     r"(?:vérifi|confirm|valid)\w* (?:votre |la )?carte",
     r"(?:verific|conferm|convalid)\w* (?:la )?(?:sua )?carta",
+    # Card verification beyond the eight main languages (red-team corpus B01-B09). Two-sided so word order
+    # doesn't matter; still sentence-level and still switched off by a reassuring sentence.
+    r"(?:tarjeta|cartão)\w*.{0,30}(?:verific|confirm|valid)",
+    r"(?:kaart|creditcard)\w*.{0,40}(?:bevestig|verifie|controle)",
+    r"(?:bevestig|verifieer)\w*.{0,20}(?:kaart|creditcard)",
+    r"kart\w*.{0,40}(?:potwierd|weryfik|doğrula)",
+    r"(?:potwierd|weryfik|doğrula)\w*.{0,30}kart",
+    r"(?:تأكيد|التحقق).{0,30}بطاق",
+    r"بطاق.{0,30}(?:تأكيد|التحقق)",
+    r"(?:验证|驗證|确认|確認).{0,10}(?:银行卡|信用卡|卡)",
+    r"(?:银行卡|信用卡).{0,10}(?:验证|驗證|确认|確認)",
+    r"カード.{0,15}(?:確認|認証)",
+    r"(?:確認|認証).{0,10}カード",
+    r"(?:подтверд|провер)\w*.{0,30}карт",
+    r"карт\w*.{0,30}(?:подтверд|провер)",
+    r"(?:bekräfta|verifiera)\w*.{0,20}kort",
+    r"kort\w*.{0,30}(?:bekräfta|verifiera)",
     r"karte\w* (?:bestätigen|verifizieren|prüfen)",
     r"कार्ड (?:की )?(?:जानकारी|डिटेल्स|नंबर)",
     r"बैंक (?:की )?(?:जानकारी|डिटेल्स)",
@@ -162,6 +188,8 @@ CARD_DATA = _rx(
 # Payment rails that move money off-platform with no buyer protection.
 OFF_PLATFORM_PAYMENT = _rx(
     r"bank transfer",
+    r"\bqr(?: code)?\b.{0,60}\b(?:bank(?:ing)?|pay(?:ment)?|wallet|card)\b",  # pay-by-QR, not "scan the QR for Wi-Fi"
+    r"\b(?:bank(?:ing)?|payment) app\b.{0,40}\bqr\b",
     r"wire (?:transfer|the|it|money)?",
     r"\bwestern union\b",
     r"\bmoneygram\b",
@@ -188,6 +216,10 @@ OFF_PLATFORM_PAYMENT = _rx(
 )
 
 # Moving the conversation or payment away from the platform.
+# A phone number spelled out in words ("double four, seven seven zero zero, ...") only exists to dodge filters.
+_DIGIT_WORD = r"(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|double \w+|triple \w+)"
+SPELLED_NUMBER = re.compile(rf"\b{_DIGIT_WORD}(?:[\s,.-]+{_DIGIT_WORD}){{6,}}\b", re.IGNORECASE)
+
 OFF_PLATFORM_CONTACT = _rx(
     r"\bwhats\s?app\b",
     r"\btelegram\b",
@@ -204,6 +236,9 @@ OFF_PLATFORM_CONTACT = _rx(
 )
 
 URGENCY = _rx(
+    # "within N hours" in languages the rest of the lexicon doesn't cover (nl, sv, pl, tr, ar, zh, ja, ru, ...)
+    r"\d{1,2}\s?(?:uur|timmar|timer|godzin|saat|ساعة|ساعات|小时|小時|時間|часов|часа|tuntia|óra|hodin|ώρες)",
+    r"geannuleerd|vervalt|avboka|anulowan|iptal edil|إلغاء|取消|キャンセル|отмен",
     r"within \d+\s?(?:hours?|hrs?|h|minutes?|mins?)\b",
     r"\bin \d+\s?(?:hours?|hrs?|minutes?)\b",
     r"\b(?:12|24|48) ?(?:hours?|hrs?|h)\b",
@@ -243,7 +278,8 @@ URGENCY = _rx(
 
 VERIFY_LURE = _rx(
     r"\bverif(?:y|ication|ied)\b",
-    r"confirm (?:your )?(?:booking|reservation|identity|card|details|payment)",
+    # "we confirm your reservation" is the hotel confirming, not a request to the guest
+    r"(?<!we )(?<!happy to )(?<!pleased to )(?<!can )confirm (?:your )?(?:booking|reservation|identity|card|details|payment)",
     r"security check",
     r"\bvalidat(?:e|ion)\b",
     r"re-?confirm",
@@ -275,6 +311,20 @@ OVERPAYMENT = _rx(
     r"by mistake",
     r"wire (?:back|the (?:rest|difference|balance))",
     r"send (?:back|the (?:rest|difference))",
+    r"pagu[ée] (?:de más|dos veces)",
+    r"devuelvan? la diferencia",
+    r"pay[ée] (?:deux fois|en trop|de trop)",
+    r"rembourser (?:l'excédent|la différence)",
+    r"paguei (?:a mais|duas vezes)",
+    r"devolver a diferença",
+    r"zu viel (?:bezahlt|überwiesen)",
+    r"doppelt bezahlt",
+    r"pagato (?:due volte|in più)",
+    r"restituire la differenza",
+    r"ज़्यादा भुगतान",
+    r"ज्यादा भुगतान",
+    r"zyada payment",
+    r"galti se .{0,20}(?:payment|transfer)",
 )
 
 # Words that make a sentence an instruction to act, as opposed to a mention.
@@ -367,6 +417,11 @@ INJECTION = _rx(
     r"developer mode",
     r"</?\s*(?:system|assistant|user|instructions?)\s*>",
     r"\[/?INST\]",
+    r"\[/?\s*(?:system|assistant|instructions?|admin)\s*\]",
+    r"output (?:the |a )?(?:verdict|label|classification)",
+    r"(?:respond|answer|reply) that this (?:text|message) is",
+    r"skip (?:the )?review",
+    r"pre-?approved by",
     r"<\|",
     r"BEGIN (?:SYSTEM|ADMIN)",
     r"(?:note|message) (?:to|for) (?:the )?(?:ai|model|llm|classifier|filter|moderator|reviewer)",
@@ -493,6 +548,8 @@ def _accept_candidate(m: re.Match[str], text: str) -> str | None:
         return None  # userinfo before an @ (booking.com@evil.xyz): the real host comes after the @
     if not is_public_host(host_part.lower()):
         return None
+    if "/" not in u and len(EXTRACT(host_part.lower()).domain) < 2:
+        return None  # "U.CALL", "K.k.how": a one-letter name with no path is a typo, not a link (t.co/abc keeps its path)
     tld = host_part.rsplit(".", 1)[-1]
     if tld[:1].isupper() and tld[1:].islower():
         return None  # "today.So" / "room.In": a missing space after a full stop, not a domain
@@ -571,6 +628,11 @@ def extract(text: str) -> TextSignals:
     s.hidden_chars = bool(ZERO_WIDTH.search(text))
     s.mixed_script = has_mixed_script_word(text)
     d = deobfuscate(t)
+    spelled = [m.group() for m in SPELLED_NUMBER.finditer(t)]
+    if spelled:
+        s.off_platform_contact = s.obfuscated = True
+        s.add("off_platform_contact", spelled[:1])
+        s.add("deobfuscated", ["phone number spelled out in words"])
     if d != t:
         s2 = _extract(d)
         gained = [f for f in BOOL_FLAGS if getattr(s2, f) and not getattr(s, f)]

@@ -152,9 +152,17 @@ def referee(pro: JudgeOpinion, de: JudgeOpinion) -> float:
 # Offline judge (deterministic)
 # ----------------------------------------------------------------------------------------------
 LOGISTICS = re.compile(
+    r"passport|\bID\b|address|directions|our website|menu|room is ready|floor|\bbeds?\b|\bcot\b|crib|towels?|"
+    r"door code|keypad|lift|elevator|\bgym\b|beach|bikes?|luggage|follow us|instagram|facebook|renovation|"
     r"check-?in|check-?out|breakfast|parking|wi-?fi|pool|spa|reception|arrival time|"
     r"room is ready|luggage|airport|metro|taxi|restaurant|review|welcome|see you|enjoy|"
     r"नाश्ता|चेक-इन|पार्किंग|स्वागत|desayuno|pequeno-almoço|petit-déjeuner|frühstück|colazione",
+    re.IGNORECASE,
+)
+
+
+INSTRUCTION = re.compile(
+    r"\b(?:complete|finish|open|use|follow|tap|click|scan|reply|confirm|verify|fill(?: in)?|log ?in|sign ?in|go to|visit)\b",
     re.IGNORECASE,
 )
 
@@ -180,6 +188,10 @@ class OfflineJudge:
             "injection",
         ):
             pro_q += sig.evidence.get(k, [])[:2]
+        # A link we can't vouch for next to an instruction ("complete check-in here", "open the guest area") is the
+        # shape of a lexicon-free phishing message; quote the link so the evidence is checkable.
+        unvouched = [u for u in sig.urls if link_worst > 0.0] if INSTRUCTION.search(masked) else []
+        pro_q += unvouched[:2]
         pro_conf = min(
             0.97,
             0.25
@@ -187,7 +199,8 @@ class OfflineJudge:
             + 0.08 * sig.scam_flags
             + 0.3 * link_worst
             + (0.15 if sig.money_ask and terms == "pay_at_property" else 0)
-            + (0.2 if direction == "guest_to_hotel" and sig.overpayment else 0),
+            + (0.2 if direction == "guest_to_hotel" and sig.overpayment else 0)
+            + (0.25 if unvouched else 0),
         )
         pro_why = []
         if sig.money_ask and terms == "pay_at_property":
@@ -198,8 +211,15 @@ class OfflineJudge:
             pro_why.append("links to a domain that is not the platform or the hotel")
         if sig.off_platform_contact or sig.off_platform_payment:
             pro_why.append("moves payment or contact off the platform")
+        if unvouched:
+            pro_why.append("asks the guest to act on a link that is not the platform's or the hotel's")
 
-        de_q = sig.evidence.get("reassurance", [])[:3] + [m.group() for m in LOGISTICS.finditer(masked)][:3]
+        # Logistics words only speak for the message when they are not attached to an unvouched link
+        # ("complete online check-in here: <link>" is not stay logistics).
+        logistics = [] if unvouched else [m.group() for m in LOGISTICS.finditer(masked)][:3]
+        # Links to the platform or the hotel's own site speak for the message.
+        own_links = [u for u in sig.urls if link_worst == 0.0][:2]
+        de_q = sig.evidence.get("reassurance", [])[:3] + logistics + own_links
         de_conf = min(
             0.95,
             0.2

@@ -49,6 +49,7 @@ ignore = [
 "tests/**" = ["S101", "S105", "S106", "S311"]  # asserts, fixed test secrets and non-crypto randomness are fine in tests
 "eval/**" = ["S311"]                           # seeded random sampling for reproducible evaluation
 "scripts/**" = ["S311"]
+"tests/adversarial/corpus.py" = ["E501"]       # attack strings are kept verbatim on one line so they are easy to read and diff
 
 [tool.ruff.format]
 quote-style = "double"

@@ -14,7 +14,7 @@ from typing import Any
 
 from . import config
 from .classifier import ScamClassifier
-from .judges import CircuitBreaker, Judge, JudgeUnavailable, OfflineJudge, make_judge
+from .judges import INSTRUCTION, CircuitBreaker, Judge, JudgeUnavailable, OfflineJudge, make_judge
 from .links import LinkChecker
 from .signals import detect_language, extract, mask_pii
 
@@ -299,6 +299,8 @@ class Engine:
         # Brand-free fresh domains score as 'safe', so a deadline or verification lure next to ANY non-official
         # link still goes to the model/judges instead of the fast path.
         unofficial_link = any(v.verdict != "official" for v in lv)
+        # an unknown site plus an instruction ("finish it at <link>") is the shape of lexicon-free phishing
+        unknown_link_with_instruction = any("UNKNOWN_DOMAIN" in v.reasons for v in lv) and bool(INSTRUCTION.search(text))
         quiet = not (
             sig.money_ask
             or sig.soft_money_ask
@@ -311,6 +313,7 @@ class Engine:
             or sig.obfuscated
             or (sig.verify_lure and (sig.urgency or unofficial_link))
             or (sig.urgency and unofficial_link)
+            or unknown_link_with_instruction
         ) and all(v.verdict in ("official", "safe") for v in lv)
         rule_decided = bool(reasons) and decision != "warn"
         stage("rules", s, decided=rule_decided, reasons=list(reasons))
@@ -322,11 +325,17 @@ class Engine:
         stage("model", s, p=round(model_p, 4))
 
         judges_out, llm_called = None, False
+        ruling_needed = False
         if not rule_decided:
-            if quiet and not reasons:
+            if quiet and not reasons and model_p <= config.MODEL_HIGH:
                 path = "rule"
                 reasons.append("NO_PAYMENT_ASK")
-            elif model_p < config.MODEL_LOW and worst < 0.3:
+            elif quiet and not reasons:
+                # Nothing in the lexicons, but the model would hold this (another language, a QR or "reply YES"
+                # lure...). The fast path may not deliver what the model would hold; a model-only hold is too
+                # trigger-happy on ordinary chat, so these go to the judges.
+                ruling_needed = True
+            elif model_p < config.MODEL_LOW and worst < 0.3 and not unknown_link_with_instruction:
                 path = "model"
                 escalate("deliver", "MODEL_LOW_RISK")
             elif model_p > config.MODEL_HIGH:
@@ -334,6 +343,8 @@ class Engine:
                 escalate("hold", "MODEL_HIGH_RISK")
                 ev("model_terms", self.clf.top_terms(text))
             else:
+                ruling_needed = True
+            if ruling_needed:
                 # 5. judges ----------------------------------------------------------------
                 s = time.perf_counter()
                 ruling = None

@@ -11,7 +11,8 @@ STRICT = {"stayguard/engine.py": 95.0, "stayguard/signals.py": 95.0, "stayguard/
 
 
 def main(path: str) -> int:
-    data = json.load(open(path, encoding="utf-8"))
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
     failures = []
     total = data["totals"]["percent_covered"]
     if total < OVERALL:
