@@ -15,11 +15,30 @@ os.environ.pop("STAYGUARD_ANTHROPIC_API_KEY", None)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
+_ENGINES: list = []
+
+
 @pytest.fixture(scope="session")
 def engine():
     from stayguard.engine import Engine
 
-    return Engine()
+    e = Engine()
+    _ENGINES.append(e)
+    return e
+
+
+@pytest.fixture(autouse=True)
+def _isolate_shared_engine():
+    """The session-wide engine is shared for speed; a test that trips its circuit breaker (degraded-path tests) must
+    not leave it open for the next test."""
+    yield
+    for e in _ENGINES:
+        from stayguard.judges import CircuitBreaker, OfflineJudge
+
+        e.breaker = CircuitBreaker()
+        if not isinstance(e.judge, OfflineJudge):
+            e.judge = OfflineJudge()
+        e.metrics.reset()
 
 
 @pytest.fixture(scope="session")

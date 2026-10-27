@@ -353,6 +353,7 @@ class Engine:
                     # feed the breaker. Anything else is a bug in our code: it propagates to check(), which holds
                     # the message, instead of quietly delivering it under the degraded policy.
                     try:
+                        ctx["links"] = partial["links"]  # per-link verdicts, so a judge can tell a maps link from a fresh domain
                         ruling = self.judge.rule(masked, sig, ctx, model_p, worst)
                         llm_called = not isinstance(self.judge, OfflineJudge)
                         self.breaker.record(True)

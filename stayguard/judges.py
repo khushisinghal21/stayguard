@@ -161,6 +161,9 @@ LOGISTICS = re.compile(
 )
 
 
+# Link-checker reasons that vouch for a link (see links.py). A brand-free unknown domain is NOT vouched for.
+VOUCHED_REASONS = {"OFFICIAL_DOMAIN", "BRAND_OWNED_DOMAIN", "MAPS_LINK", "POPULAR_DOMAIN"}
+
 INSTRUCTION = re.compile(
     r"\b(?:complete|finish|open|use|follow|tap|click|scan|reply|confirm|verify|fill(?: in)?|log ?in|sign ?in|go to|visit)\b",
     re.IGNORECASE,
@@ -190,7 +193,18 @@ class OfflineJudge:
             pro_q += sig.evidence.get(k, [])[:2]
         # A link we can't vouch for next to an instruction ("complete check-in here", "open the guest area") is the
         # shape of a lexicon-free phishing message; quote the link so the evidence is checkable.
-        unvouched = [u for u in sig.urls if link_worst > 0.0] if INSTRUCTION.search(masked) else []
+        # Vouching is decided per link from the link checker's verdicts (ctx["links"]): a Google Maps or brand-owned
+        # link scores 0.05, so "worst score > 0" used to count it as unvouched and held "We confirm your reservation.
+        # Directions: <maps link>". Without per-link verdicts we fall back to the conservative worst-score rule.
+        verdicts = {str(v.get("url")): v for v in ctx.get("links", []) if isinstance(v, dict)}
+
+        def vouched(u: str) -> bool:
+            v = verdicts.get(u)
+            if v is None:
+                return link_worst == 0.0
+            return v.get("verdict") == "official" or bool(VOUCHED_REASONS & set(v.get("reasons", [])))
+
+        unvouched = [u for u in sig.urls if not vouched(u)] if INSTRUCTION.search(masked) else []
         pro_q += unvouched[:2]
         pro_conf = min(
             0.97,
@@ -217,8 +231,8 @@ class OfflineJudge:
         # Logistics words only speak for the message when they are not attached to an unvouched link
         # ("complete online check-in here: <link>" is not stay logistics).
         logistics = [] if unvouched else [m.group() for m in LOGISTICS.finditer(masked)][:3]
-        # Links to the platform or the hotel's own site speak for the message.
-        own_links = [u for u in sig.urls if link_worst == 0.0][:2]
+        # Links to the platform, the hotel's own site, a maps share link or a brand-owned site speak for the message.
+        own_links = [u for u in sig.urls if vouched(u)][:2]
         de_q = sig.evidence.get("reassurance", [])[:3] + logistics + own_links
         de_conf = min(
             0.95,
