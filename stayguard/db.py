@@ -340,9 +340,14 @@ def audit(kind: str, payload: dict[str, Any]) -> str:
         h = _h(prev, ts, kind, body)
         cur = t.execute("INSERT INTO audit (ts, kind, payload, prev_hash, hash) VALUES (?,?,?,?,?)", (ts, kind, body, prev, h))
         seq = int(cur.lastrowid or 0)
-    if config.AUDIT_ANCHOR_EVERY and seq % config.AUDIT_ANCHOR_EVERY == 0:
-        anchor_audit()
+        if config.AUDIT_ANCHOR_EVERY and seq % config.AUDIT_ANCHOR_EVERY == 0:
+            _write_anchor(seq, h)  # inside the write lock, so anchors are appended in chain order
     return h
+
+
+def _write_anchor(seq: int, h: str) -> None:
+    with open(anchor_path(), "a", encoding="utf-8") as f:
+        f.write(json.dumps({"seq": seq, "hash": h, "ts": time.time()}) + "\n")
 
 
 def anchor_audit() -> dict[str, Any] | None:
@@ -351,8 +356,8 @@ def anchor_audit() -> dict[str, Any] | None:
     if not row:
         return None
     entry = {"seq": row["seq"], "hash": row["hash"], "ts": time.time()}
-    with _lock, open(anchor_path(), "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
+    with _lock:
+        _write_anchor(row["seq"], row["hash"])
     return entry
 
 
@@ -366,13 +371,16 @@ def audit_verify() -> dict[str, Any]:
         hashes[r["seq"]] = r["hash"]
     anchors = 0
     p = anchor_path()
+    if n and config.AUDIT_ANCHOR_EVERY and not p.exists():
+        # rows exist but the anchor file is gone: that is itself tampering (or lost evidence), not "nothing to check"
+        return {"ok": False, "broken_at_seq": None, "checked": n, "reason": "anchors_missing"}
     if p.exists():
         for line in p.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             a = json.loads(line)
             anchors += 1
-            if hashes.get(a["seq"]) != a["hash"]:
+            if hashes.get(a["seq"]) != a["hash"]:  # also catches rows deleted from the end (seq no longer present)
                 return {"ok": False, "broken_at_seq": a["seq"], "checked": n, "reason": "anchor_mismatch"}
     return {"ok": True, "checked": n, "anchors_checked": anchors, "head": prev}
 

@@ -17,7 +17,13 @@ from .domains import EXTRACT, is_public_host
 # ----------------------------------------------------------------------------------------------
 # Normalisation
 # ----------------------------------------------------------------------------------------------
-ZERO_WIDTH = re.compile("[​-‏⁠﻿­]")
+# Every invisible "default ignorable" character, not only the zero-width ones: invisible operators (U+2061-2064),
+# the combining grapheme joiner (U+034F), the Mongolian vowel separator, bidi controls, variation selectors and the
+# tag block. Review round 1 got a card-details scam delivered by sprinkling U+2063 inside words.
+ZERO_WIDTH = re.compile(
+    "[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f"
+    "\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb\U0001d173-\U0001d17a\U000e0000-\U000e0fff]"
+)
 # Cyrillic / Greek letters that look Latin. Used to unmask "Вооking" style spoofing.
 CONFUSABLES = str.maketrans(
     {
@@ -463,9 +469,31 @@ PHONE_RX = re.compile(r"(?<![\w/-])(?!\d{4}-\d{2}-\d{2}\b)\+?\d[\d\s().-]{7,}\d\
 AADHAAR_RX = re.compile(r"\b\d{4}\s\d{4}\s\d{4}\b")
 
 
+_DASHES = re.compile(r"[\u2010-\u2015\u2212\ufe58\ufe63\uff0d]")
+_SPACES = re.compile(r"[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]")
+
+
+def _pii_view(text: str) -> str:
+    """What the PII regexes run on: NFKC (fullwidth digits -> ASCII), invisible characters removed, and every Unicode
+    dash or space turned into its ASCII form. Review round 1 got 4111\u20111111\u20111111\u20111111 (non-breaking
+    hyphens) past masking and into storage."""
+    t = unicodedata.normalize("NFKC", text)
+    t = ZERO_WIDTH.sub("", t)
+    t = _DASHES.sub("-", t)
+    return _SPACES.sub(" ", t)
+
+
 def mask_pii(text: str) -> tuple[str, list[str]]:
-    """Replace card numbers (Luhn-checked), IBANs, UPI IDs, e-mails, ID numbers and phones with tokens."""
+    """Replace card numbers (Luhn-checked), IBANs, UPI IDs, e-mails, ID numbers and phones with tokens.
+
+    The masked text is built from a normalised view of the message (see _pii_view), so separators and digit forms
+    can't hide a number. Links are kept intact: `https://booking.com@evil.net/x` is a URL with a userinfo part, not an
+    e-mail, and masking it would hide the real host from the judges."""
     kinds: list[str] = []
+    text = _pii_view(text)
+    link_spans = [
+        (m.start(), m.start() + len(u)) for m in URL_RX.finditer(text) if (u := _accept_candidate(m, text)) and "://" in u
+    ]
 
     def card_sub(m: re.Match[str]) -> str:
         digits = re.sub(r"\D", "", m.group())
@@ -474,8 +502,15 @@ def mask_pii(text: str) -> tuple[str, list[str]]:
             return "[CARD]"
         return m.group()
 
-    out = CARD_RX.sub(card_sub, text)
-    for rx, tok in ((IBAN_RX, "IBAN"), (UPI_RX, "UPI"), (EMAIL_RX, "EMAIL"), (AADHAAR_RX, "ID"), (PHONE_RX, "PHONE")):
+    def email_sub(m: re.Match[str]) -> str:
+        if any(a <= m.start() < b for a, b in link_spans):
+            return m.group()  # inside a link: userinfo, not an e-mail
+        kinds.append("EMAIL")
+        return "[EMAIL]"
+
+    out = EMAIL_RX.sub(email_sub, text)  # first, while link positions still match the text
+    out = CARD_RX.sub(card_sub, out)
+    for rx, tok in ((IBAN_RX, "IBAN"), (UPI_RX, "UPI"), (AADHAAR_RX, "ID"), (PHONE_RX, "PHONE")):
         out, n = rx.subn(f"[{tok}]", out)
         kinds += [tok] * n
     return out, kinds
@@ -485,6 +520,11 @@ def mask_pii(text: str) -> tuple[str, list[str]]:
 # Signal extraction
 # ----------------------------------------------------------------------------------------------
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?।])\s+|\n+")
+# Clause boundaries inside a sentence: punctuation and contrast words ("..., but please transfer ...").
+CLAUSE_SPLIT = re.compile(
+    r"[,;:]\s*|\s+(?=(?:but|however|still|though|although|yet|except|instead|anyway|nevertheless|pero|mais|aber|ma|mas)\b)",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -588,6 +628,18 @@ def _spans(rx: re.Pattern[str], text: str) -> list[str]:
     return [m.group().strip() for m in rx.finditer(text) if m.group().strip()]
 
 
+_DEFANG = re.compile(
+    r"\s*(?:\[\s*(?:\.|dot)\s*\]|\(\s*(?:\.|dot)\s*\)|\{\s*(?:\.|dot)\s*\}|[\u3002\uff61\uff0e])\s*", re.IGNORECASE
+)
+_SPACED_DOT = re.compile(r"(?<=[\w-])\s+\.\s+(?=[a-z]{2,10}\b)", re.IGNORECASE)
+
+
+def refang(t: str) -> str:
+    """Undo link defanging: 'evil[.]com', 'evil(.)com', 'evil{dot}com', ideographic full stops, 'evil . com'."""
+    t = _DEFANG.sub(".", t)
+    return _SPACED_DOT.sub(".", t)
+
+
 LEET = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"})
 SPACED = re.compile(r"\b(?:[A-Za-z][ .\-_*·]){2,}[A-Za-z]\b")
 
@@ -628,6 +680,20 @@ def extract(text: str) -> TextSignals:
     s.hidden_chars = bool(ZERO_WIDTH.search(text))
     s.mixed_script = has_mixed_script_word(text)
     d = deobfuscate(t)
+    # Links written to dodge extraction: "guest-step-portal\u3002net", "[.]", "(.)", " . ". Browsers and chat apps
+    # turn several of these back into a working link, so they are links, and writing them that way is evidence.
+    r = refang(t)
+    if r != t:
+        hidden = [u for u in _links(r) if u not in s.urls and u not in _links(t)]
+        if hidden:
+            s.urls += hidden
+            s.obfuscated = True
+            s.add("deobfuscated", ["link written to dodge filters: " + hidden[0]])
+            s3 = _extract(r)
+            for f in BOOL_FLAGS:
+                if getattr(s3, f) and not getattr(s, f):
+                    setattr(s, f, True)
+                    s.add(f, s3.evidence.get(f, []))
     spelled = [m.group() for m in SPELLED_NUMBER.finditer(t)]
     if spelled:
         s.off_platform_contact = s.obfuscated = True
@@ -669,19 +735,23 @@ def _extract(t: str) -> TextSignals:
     # Sentence-level reading. A money ASK needs payment words plus an instruction in the same sentence,
     # and a reassuring sentence ("you pay at the property", "we never ask for card details") is not an ask.
     card_spans, rail_spans, unreassured_pay = [], [], []
-    for sent in SENTENCE_SPLIT.split(t):
-        reassured = bool(REASSURE.search(sent))
-        if reassured:
-            s.add("reassurance", _spans(REASSURE, sent))
-        if not reassured:
-            card_spans += _spans(CARD_DATA, sent)
-            rail_spans += _spans(OFF_PLATFORM_PAYMENT, sent)
+    for full in SENTENCE_SPLIT.split(t):
+        # Reassurance only covers the clause it is in. Review round 1: "Payment is collected on arrival and we don't
+        # need to share any details, but please transfer 50 via UPI ..." was delivered because one reassuring phrase
+        # switched off the whole sentence. The rest of the sentence is read without the reassuring clauses.
+        clauses = [c for c in CLAUSE_SPLIT.split(full) if c and c.strip()]
+        calm = [c for c in clauses if REASSURE.search(c)]
+        for c in calm:
+            s.add("reassurance", _spans(REASSURE, c))
+        sent = " ".join(c for c in clauses if not REASSURE.search(c))
+        card_spans += _spans(CARD_DATA, sent)
+        rail_spans += _spans(OFF_PLATFORM_PAYMENT, sent)
+        if any(PAY_TERMS.search(c) for c in calm):
+            s.money_mention = True
         pay = _spans(PAY_TERMS, sent)
         if not pay:
             continue
         s.money_mention = True
-        if reassured:
-            continue
         unreassured_pay += pay
         link_here = bool(_links(sent))
         if ACTION.search(sent) or link_here:

@@ -12,7 +12,6 @@ phishing domains from layer 1 and measures how many layer 2 still catches.
 
 from __future__ import annotations
 
-import ipaddress
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -24,7 +23,7 @@ from rapidfuzz import fuzz
 
 from . import config
 from .domains import EXTRACT as _EXTRACT
-from .domains import host_of, registered_domain
+from .domains import host_of, is_numeric_ip_host, is_public_host, registered_domain
 
 # "hotels" and "kayak" are deliberately absent: fuzzy-matching them would flag every hotel's own site.
 BRANDS = {
@@ -150,6 +149,39 @@ SHORTENERS = {
     "tr.im",
     "buff.ly",
 }
+# Popular services where anyone can publish a page or form. Their domains are in the top-10k list, so without this the
+# popularity discount made `docs.google.com/forms/...` or a public cloud-storage page "safe" (review round 1).
+USER_CONTENT_HOSTS = (
+    "docs.google.com",
+    "drive.google.com",
+    "storage.googleapis.com",
+    "firebasestorage.googleapis.com",
+    "googleusercontent.com",
+    "s3.amazonaws.com",
+    "amazonaws.com",
+    "blob.core.windows.net",
+    "dropbox.com",
+    "dropboxusercontent.com",
+    "onedrive.live.com",
+    "1drv.ms",
+    "sharepoint.com",
+    "notion.site",
+    "canva.site",
+    "linktr.ee",
+    "wetransfer.com",
+    "we.tl",
+    "box.com",
+    "mediafire.com",
+    "mega.nz",
+    "forms.office.com",
+    "jotform.com",
+    "typeform.com",
+    "airtable.com",
+    "t.me",
+    "wa.me",
+)
+# Country TLDs that are free or heavily abused; a brand name on them is never assumed to be the brand's own site.
+ABUSED_CCTLDS = {"tk", "ml", "ga", "cf", "gq", "cm", "ws", "cc", "to", "nu", "la", "pw", "su"}
 KNOWN_SAFE_HOSTS = {"maps.app.goo.gl", "goo.gl"}  # google maps share links (path-checked below)
 LURE_WORDS = re.compile(
     r"verif|confirm|secure|check-?in|checkin|extranet|admin|guest|payment|pay|login|signin|"
@@ -207,6 +239,22 @@ class LinkVerdict:
 
 
 EMBEDDED_URL = re.compile(r"(?:https?|hxxps?)://[^\s&#]+", re.IGNORECASE)
+PARAM_VALUE = re.compile(r"[?&#;](?:[\w.-]*=)?([^&#\s]+)")
+
+
+def embedded_targets(url: str) -> list[str]:
+    """Other URLs a link carries, wherever they are: in the path (`/redirect/https://evil`), the query string, the
+    fragment (`#https://evil`), or as a scheme-less parameter value (`google.com/url?q=evil.net/x`). Review round 1:
+    only the query string used to be checked, so path and fragment redirects on official domains passed as official."""
+    host = host_of(url)
+    rest = unquote(url.split(host, 1)[1] if host and host in url.lower() else url)
+    rest = rest[rest.find("/") :] if "/" in rest else rest
+    out = EMBEDDED_URL.findall(rest)
+    for m in PARAM_VALUE.finditer(rest):
+        v = m.group(1)
+        if "://" not in v and "." in v and is_public_host(host_of(v)):
+            out.append(v)
+    return out
 
 
 class LinkChecker:
@@ -234,7 +282,7 @@ class LinkChecker:
         """Check a link. If it carries another URL in its query string (an open redirect, even on an official
         domain), the embedded URL is checked too and the worse verdict wins."""
         outer = self._check(url, property_domains)
-        inner_urls = EMBEDDED_URL.findall(unquote(url.split("?", 1)[1])) if "?" in url else []
+        inner_urls = embedded_targets(url)
         worst = outer
         for inner in inner_urls[:3]:
             v = self._check(inner, property_domains)
@@ -255,6 +303,7 @@ class LinkChecker:
         if rd in official or host in official:
             return LinkVerdict(url, host, rd, "official", 0.0, ["OFFICIAL_DOMAIN"])
         ext = _EXTRACT(host)
+        last = (ext.suffix or "").rsplit(".", 1)[-1]
         if (
             ext.domain in BRANDS
             and (
@@ -262,10 +311,16 @@ class LinkChecker:
                 or len(ext.suffix) == 2
                 or re.fullmatch(r"(?:co|com)\.[a-z]{2}", ext.suffix or "")
             )
+            and last not in ABUSED_CCTLDS
+            and last not in RISKY_TLDS
             and not self._blocklisted(host)
         ):
-            # airbnb.es, expedia.co.in: the brand's own country sites (brands register these defensively)
-            return LinkVerdict(url, host, rd, "safe", 0.05, ["BRAND_OWNED_DOMAIN"])
+            # airbnb.es, expedia.co.in: usually the brand's own country site. Vouched for (safe) only when the domain is
+            # also in the popularity list; otherwise "unknown" (0.3), so a message using it is never delivered without a
+            # warning. Review round 1 showed booking.tk / airbnb.cm being trusted on the strength of the name alone.
+            if rd in _top_domains() or host in _top_domains():
+                return LinkVerdict(url, host, rd, "safe", 0.05, ["BRAND_OWNED_DOMAIN"])
+            return LinkVerdict(url, host, rd, "unknown", 0.3, ["BRAND_COUNTRY_DOMAIN"])
         if rd in BRAND_OWNED:
             return LinkVerdict(url, host, rd, "safe", 0.05, ["BRAND_OWNED_DOMAIN"])
         if self._blocklisted(host):
@@ -274,14 +329,11 @@ class LinkChecker:
             return LinkVerdict(url, host, rd, "safe", 0.05, ["MAPS_LINK"])
 
         score = 0.0
-        is_ip = False
-        try:
-            ipaddress.ip_address(host)
-            is_ip = True
+        # integer / hex / octal forms count too (http://3627734734/ resolves like http://216.58.214.206/)
+        is_ip = is_numeric_ip_host(host)
+        if is_ip:
             score += 0.6
             reasons.append("RAW_IP_ADDRESS")
-        except ValueError:
-            pass
 
         labels = host.split(".")
         tld = labels[-1] if labels else ""
@@ -338,6 +390,9 @@ class LinkChecker:
             if rd in SHORTENERS or host in SHORTENERS:
                 score += 0.35
                 reasons.append("URL_SHORTENER_HIDES_DESTINATION")
+            if any(host == uc or host.endswith("." + uc) for uc in USER_CONTENT_HOSTS):
+                score += 0.35
+                reasons.append("USER_CONTENT_HOST")
             lure = set(m.group().lower() for m in LURE_WORDS.finditer(host))
             if lure:
                 score += min(0.3, 0.15 * len(lure))
@@ -349,7 +404,7 @@ class LinkChecker:
                 score -= 0.3
                 reasons.append("INSTITUTIONAL_DOMAIN")
             popular = rd in _top_domains() or host in _top_domains()
-            hosted = any(r in reasons for r in ("FREE_SITE_BUILDER", "URL_SHORTENER_HIDES_DESTINATION"))
+            hosted = any(r in reasons for r in ("FREE_SITE_BUILDER", "URL_SHORTENER_HIDES_DESTINATION", "USER_CONTENT_HOST"))
             if popular and not hosted:
                 score -= 0.35
                 reasons.append("POPULAR_DOMAIN")

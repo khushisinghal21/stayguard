@@ -52,7 +52,9 @@ def test_links():
     assert nobl.check("https://secure-bookimg.com/verify").verdict == "malicious"
     assert nobl.check("https://bоoking.com/pay").verdict == "malicious"
     assert nobl.check("https://maps.app.goo.gl/abc").verdict == "safe"
-    assert nobl.check("https://airbnb.es").verdict == "safe"
+    # a brand on a ccTLD is only vouched for when the domain is popular; otherwise it is "unknown", never silently safe
+    # (review round 1, A2). Either is acceptable here: the fixture popularity list may not include airbnb.es.
+    assert nobl.check("https://airbnb.es").verdict in ("safe", "unknown")
     assert nobl.check("https://trybooking.com").verdict in ("safe", "unknown")
     assert nobl.check("https://brookings.edu").verdict == "safe"
     assert nobl.check("https://bit.ly/3x").verdict == "unknown"

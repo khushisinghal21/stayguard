@@ -232,7 +232,15 @@ def test_anthropic_invented_quotes_are_dropped(monkeypatch):
 
 
 def test_anthropic_bug_is_not_a_provider_failure(monkeypatch):
-    j = judge_with(monkeypatch, Resp(body={"content": None}))  # .get on None -> AttributeError in our parsing
+    # A malformed reply ({"content": None}) is now a provider failure (review round 1, A4); a bug in OUR code after a
+    # well-formed reply is still not, so it fails closed instead of taking the degraded path.
+    import stayguard.judges as judges_mod
+
+    def buggy(*_a, **_k):
+        raise AttributeError("bug in our parsing")
+
+    monkeypatch.setattr(judges_mod, "validate_quotes", buggy)
+    j = judge_with(monkeypatch, Resp(json.dumps({"verdict": "scam", "confidence": 0.9, "evidence": ["pay now"]})))
     with pytest.raises(Exception) as ei:
         j.rule(TEXT, extract(TEXT), {}, 0.5, 0.0)
     assert not isinstance(ei.value, PROVIDER_ERRORS)

@@ -106,6 +106,13 @@ class CircuitBreaker:
                 return True
             return False
 
+    def release_probe(self) -> None:
+        """Called when a judge call ends in something that is neither success nor provider failure (a bug). Without
+        this, a half-open probe that hit a bug left probe_in_flight set forever and the judges never came back
+        (review round 1)."""
+        with self._lock:
+            self.probe_in_flight = False
+
     def record(self, ok: bool) -> None:
         with self._lock:
             self.probe_in_flight = False
@@ -124,15 +131,31 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
+# Quotes made only of these words carry no evidence ("at", "it", "the" ...): review round 1 showed a defender winning
+# with four of them.
+_STOPWORDS_TEXT = """
+    a an the at it is in on of to and or for by be as we you your our this that with from are was i me my its
+    de la el en y o le les des et à un une der die das und zu im il lo di e da do os as em
+"""
+_STOPWORDS = frozenset(_STOPWORDS_TEXT.split())
+
+
 def validate_quotes(quotes: list[str], message: str) -> tuple[list[str], list[str]]:
+    """Keep quotes that appear verbatim (case and whitespace normalised) in the message. Duplicates, quotes shorter
+    than 3 characters and quotes made only of stop-words are dropped, so evidence can't be padded."""
     msg = _norm(message)
-    ok, bad = [], []
+    ok: list[str] = []
+    bad: list[str] = []
+    seen: set[str] = set()
     for q in quotes:
         q = str(q).strip().strip("\"'")
-        if len(q) >= 2 and _norm(q) in msg:
-            ok.append(q)
-        elif q:
-            bad.append(q)
+        n = _norm(q)
+        if not q or n in seen:
+            continue
+        seen.add(n)
+        trivial = len(n) < 3 or all(w in _STOPWORDS for w in re.findall(r"\w+", n))
+        # trivial quotes are reported as rejected (not silently dropped) so the case file shows what the judge tried
+        (ok if (not trivial and n in msg) else bad).append(q)
     return ok, bad
 
 
@@ -292,7 +315,12 @@ class AnthropicJudge:
             },
         )
         r.raise_for_status()
-        text = "".join(b.get("text", "") for b in r.json().get("content", []))
+        body = r.json()
+        # The whole reply is untrusted: anything but {"content": [{"text": ...}, ...]} is a provider failure (a 200 with
+        # `[]` used to raise AttributeError, which the engine treats as a bug - review round 1).
+        if not isinstance(body, dict) or not isinstance(body.get("content"), list):
+            raise JudgeUnavailable("reply has no content list")
+        text = "".join(str(b.get("text", "")) for b in body["content"] if isinstance(b, dict))
         m = re.search(r"\{.*\}", text, re.DOTALL)
         if not m:
             raise JudgeUnavailable("judge returned no JSON")
@@ -325,11 +353,15 @@ class AnthropicJudge:
             except Exception as e:  # noqa: BLE001 - sorted into provider failure vs bug below
                 results[role] = e
 
-        threads = [threading.Thread(target=run, args=(r,)) for r in ("prosecutor", "defender")]
+        # One deadline for both judges (they run in parallel), and daemon threads so a stalled provider can't keep
+        # the process busy after we've given up. Joining each thread for the full timeout in turn used to cost twice
+        # the configured timeout (review round 1).
+        threads = [threading.Thread(target=run, args=(r,), daemon=True) for r in ("prosecutor", "defender")]
+        deadline = time.monotonic() + self.timeout + 0.2
         for th in threads:
             th.start()
         for th in threads:
-            th.join(self.timeout + 0.5)
+            th.join(max(0.0, deadline - time.monotonic()))
         pro, de = results.get("prosecutor"), results.get("defender")
         for r in (pro, de):
             if r is None:

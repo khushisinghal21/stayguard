@@ -104,8 +104,13 @@ def test_guest_verify_pin_and_lockout(service):
     wrong = "0000" if pin != "0000" else "1111"
     for _ in range(5):
         service.guest_verify(r["id"], wrong, "x", client="t1")
-    locked = service.guest_verify(r["id"], pin, "x", client="t2")
+    # the guessing client is locked out of this booking ...
+    locked = service.guest_verify(r["id"], pin, "x", client="t1")
     assert not locked["ok"] and locked["error"] == "too_many_attempts"
+    # ... but another client (the real guest) is not: a per-booking lock let anyone lock the guest out with five
+    # wrong guesses (review round 1, A12). The global per-booking ceiling is much higher.
+    other = service.guest_verify(r["id"], pin, "x", client="t2")
+    assert other["ok"]
 
 
 def test_api_endpoints(client):

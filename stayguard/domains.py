@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import socket
 from urllib.parse import unquote, urlsplit
 
 import tldextract
@@ -26,6 +27,20 @@ def is_ip(host: str) -> bool:
         ipaddress.ip_address(host)
         return True
     except ValueError:
+        return False
+
+
+def is_numeric_ip_host(host: str) -> bool:
+    """Integer, hex or octal IPv4 forms that browsers resolve (http://3627734734/, http://0xd8.0x3a.0xd6.0xce/).
+    Only used for hosts taken from an explicit URL: bare text like "12.50" must not count as an address."""
+    if is_ip(host):
+        return True
+    if not re.fullmatch(r"[0-9a-fx.]+", host, re.IGNORECASE) or not any(ch.isdigit() for ch in host):
+        return False
+    try:
+        socket.inet_aton(host)
+        return True
+    except OSError:
         return False
 
 

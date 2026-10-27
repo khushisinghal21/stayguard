@@ -23,9 +23,30 @@ class IdempotencyConflict(Exception):
     """The same message_id was sent again with a different payload."""
 
 
-def payload_hash(text: str, reservation_id: str | None, session_id: str | None, direction: str) -> str:
-    body = json.dumps([text, reservation_id or "", session_id or "", direction], ensure_ascii=False)
+class IdempotencyInFlight(IdempotencyConflict):
+    """The same message_id is still being processed by another request."""
+
+
+def payload_hash(
+    text: str,
+    reservation_id: str | None,
+    session_id: str | None,
+    direction: str,
+    payment_terms: str | None = None,
+    property_id: str | None = None,
+) -> str:
+    """Everything that can change a decision is in the hash (review round 1: terms and property were missing, so a
+    resend with different terms silently replayed the old decision)."""
+    body = json.dumps(
+        [text, reservation_id or "", session_id or "", direction, payment_terms or "", property_id or ""], ensure_ascii=True
+    )
     return hashlib.sha256(body.encode()).hexdigest()
+
+
+def clean_text(text: str) -> str:
+    """Lone surrogates (valid JSON, invalid UTF-8) used to crash hashing and storage before the fail-closed guard and
+    return HTTP 500 (review round 1). Replace them up front."""
+    return text.encode("utf-8", "replace").decode("utf-8")
 
 
 def fail_closed_response(message_id: str | None, error: str, masked_text: str = "") -> dict[str, Any]:
@@ -109,6 +130,13 @@ class Service:
 
     def _score_session(self, sid: str, property_id: str, user: str, event: dict[str, Any]) -> dict[str, Any]:
         sc = self.sessions.score(event)
+        prop = self.property(property_id)
+        if prop and prop.get("password_reset_required"):
+            # Containment demanded a password reset and passkey. Until the property is marked recovered, every new
+            # session is treated as taken over, so nothing it sends reaches guests (review round 1: the flag used to be
+            # written but never read).
+            sc.risk, sc.level = max(sc.risk, 0.95), "critical"
+            sc.reasons = ["PASSWORD_RESET_PENDING", *sc.reasons]
         log.info("session scored property=%s risk=%.3f level=%s reasons=%s", property_id, sc.risk, sc.level, ",".join(sc.reasons))
         with db.tx() as t:
             t.execute(
@@ -128,7 +156,15 @@ class Service:
             return None
         r = db.con().execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone()
         if not r:
-            return None
+            # A session id we never scored is not evidence of a normal login (review round 1): treat it as risky.
+            return {
+                "id": sid,
+                "risk": 0.75,
+                "level": "risky",
+                "reasons": ["UNKNOWN_SESSION"],
+                "status": "active",
+                "property_id": None,
+            }
         return {
             "id": r["id"],
             "risk": r["risk"],
@@ -150,22 +186,50 @@ class Service:
         property_id: str | None = None,
         message_id: str | None = None,
     ) -> dict[str, Any]:
-        ph = payload_hash(text, reservation_id, session_id, direction)
-        if message_id:
-            row = db.con().execute("SELECT payload_hash, response FROM idempotency WHERE key=?", (message_id,)).fetchone()
-            if row:
-                if row["payload_hash"] != ph:
-                    # Same key, different message: replaying the old decision would let a new text ride on an old
-                    # "deliver". Refuse and record it.
-                    db.audit(
-                        "message.idempotency_conflict",
-                        {"message_id": message_id, "reservation_id": reservation_id, "session_id": session_id},
-                    )
-                    raise IdempotencyConflict(message_id)
-                return {**json.loads(row["response"]), "idempotent_replay": True}
         mid = message_id or "M-" + uuid.uuid4().hex[:10]
+        try:
+            text = clean_text(text)
+            ph = payload_hash(text, reservation_id, session_id, direction, payment_terms, property_id)
+            replay = self._claim(mid, ph, reservation_id, session_id)
+        except IdempotencyConflict:
+            raise
+        except Exception as exc:  # noqa: BLE001 - even the idempotency lookup must fail closed (review round 1)
+            log.exception("check_message failed closed before processing %s", mid)
+            return fail_closed_response(mid, type(exc).__name__)
+        if replay is not None:
+            return {**replay, "idempotent_replay": True}
         with trace(mid):
-            return self._check_message(mid, text, reservation_id, session_id, direction, payment_terms, property_id, ph)
+            return self._check_message(mid, text, reservation_id, session_id, direction, payment_terms, property_id)
+
+    def _claim(self, mid: str, ph: str, reservation_id: str | None, session_id: str | None) -> dict[str, Any] | None:
+        """Atomically claim a message_id. Returns the stored response for an exact replay, raises IdempotencyConflict for
+        the same key with a different payload (or while the first request is still running), else claims the key.
+        Lookup and claim happen in one write transaction: two concurrent requests with the same key used to both get
+        through, and the second overwrote the first's stored message (review round 1)."""
+        conflict = None
+        with db.tx() as t:
+            row = t.execute("SELECT payload_hash, response FROM idempotency WHERE key=?", (mid,)).fetchone()
+            if row is None:
+                t.execute(
+                    "INSERT INTO idempotency (key, created, payload_hash, response) VALUES (?,?,?,NULL)", (mid, time.time(), ph)
+                )
+                return None
+            if row["payload_hash"] != ph:
+                conflict = IdempotencyConflict(mid)
+            elif row["response"] is None:
+                conflict = IdempotencyInFlight(mid)
+            else:
+                return dict(json.loads(row["response"]))
+        db.audit(
+            "message.idempotency_conflict",
+            {
+                "message_id": mid,
+                "reservation_id": reservation_id,
+                "session_id": session_id,
+                "in_flight": isinstance(conflict, IdempotencyInFlight),
+            },
+        )
+        raise conflict
 
     def _check_message(
         self,
@@ -176,27 +240,35 @@ class Service:
         direction: str,
         payment_terms: str | None,
         property_id: str | None,
-        ph: str,
     ) -> dict[str, Any]:
         masked = ""
         try:
             masked = mask_pii(text)[0]
             res = self.reservation(reservation_id) if reservation_id else None
-            terms = payment_terms or (res["payment_terms"] if res else "unknown")
-            pid = property_id or (res["property_id"] if res else None)
+            # The reservation's stored terms always win: a caller-supplied "prepaid" used to switch off the
+            # pay-at-hotel rule for a pay-at-hotel booking (review round 1). A mismatch is recorded.
+            terms = res["payment_terms"] if res else (payment_terms or "unknown")
+            if res and payment_terms and payment_terms != terms:
+                db.audit(
+                    "message.terms_mismatch",
+                    {"message_id": mid, "reservation_id": reservation_id, "claimed": payment_terms, "stored": terms},
+                )
+            pid = (res["property_id"] if res else None) or property_id
             prop = self.property(pid) if pid else None
             sess = self.session(session_id)
             if sess and sess["status"] == "revoked":
                 db.audit(
                     "message.rejected", {"session_id": session_id, "reservation_id": reservation_id, "reason": "SESSION_REVOKED"}
                 )
-                return {
+                out_revoked = {
                     "message_id": mid,
                     "decision": "block",
                     "reasons": ["SESSION_REVOKED"],
                     "explanations": ["This session was logged out by containment."],
                     "path": "rule",
                 }
+                self._store_response(mid, out_revoked)
+                return out_revoked
             ctx = {
                 "payment_terms": terms,
                 "direction": direction,
@@ -217,8 +289,9 @@ class Service:
             }
             body = json.dumps(out, ensure_ascii=False)
             with db.tx() as t:
+                # plain INSERT: a stored decision is never silently replaced
                 t.execute(
-                    "INSERT OR REPLACE INTO messages (id, created, property_id, reservation_id, session_id, direction, "
+                    "INSERT INTO messages (id, created, property_id, reservation_id, session_id, direction, "
                     "text, raw_text, decision, reasons, path, result) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         mid,
@@ -235,10 +308,7 @@ class Service:
                         body,
                     ),
                 )
-                t.execute(
-                    "INSERT OR REPLACE INTO idempotency (key, created, payload_hash, response) VALUES (?,?,?,?)",
-                    (mid, time.time(), ph, body),
-                )
+                t.execute("UPDATE idempotency SET response=? WHERE key=?", (body, mid))
             db.audit(
                 "message.decision",
                 {
@@ -255,14 +325,20 @@ class Service:
             return out
         except Exception as exc:  # noqa: BLE001 - anything unexpected must hold the message, never deliver it
             log.exception("check_message failed closed for %s", mid)
+            out_fc = fail_closed_response(mid, type(exc).__name__, masked)
             try:
                 db.audit(
                     "message.fail_closed",
                     {"message_id": mid, "reservation_id": reservation_id, "session_id": session_id, "error": type(exc).__name__},
                 )
-            except Exception:  # noqa: BLE001 - the audit store itself may be what failed
-                log.exception("audit write failed while failing closed for %s", mid)
-            return fail_closed_response(mid, type(exc).__name__, masked)
+                self._store_response(mid, out_fc)  # a replay of this id also gets the hold
+            except Exception:  # noqa: BLE001 - the store itself may be what failed
+                log.exception("audit/store failed while failing closed for %s", mid)
+            return out_fc
+
+    def _store_response(self, mid: str, out: dict[str, Any]) -> None:
+        with db.tx() as t:
+            t.execute("UPDATE idempotency SET response=? WHERE key=?", (json.dumps(out, ensure_ascii=False), mid))
 
     def record_reads(self, session_id: str, reservation_ids: list[str]) -> int:
         """The extranet reports which reservations a session opened, so containment can warn exactly those guests."""
@@ -276,31 +352,59 @@ class Service:
 
     # ------------------------------------------------------------------ guest checker
     def guest_verify(self, reservation_id: str, pin: str, text: str, client: str = "unknown") -> dict[str, Any]:
+        text = clean_text(text)
         now = time.time()
-        since = now - config.GUEST_LOCK_WINDOW_S
-        c = db.con()
-        res_fails = c.execute(
-            "SELECT COUNT(*) FROM guest_attempts WHERE reservation_id=? AND ok=0 AND ts>?", (reservation_id, since)
-        ).fetchone()[0]
-        client_fails = c.execute(
-            "SELECT COUNT(*) FROM guest_attempts WHERE client=? AND ok=0 AND ts>?", (client, since)
-        ).fetchone()[0]
-        if res_fails >= config.GUEST_FAILS_PER_RESERVATION or client_fails >= config.GUEST_FAILS_PER_CLIENT:
+        since, day = now - config.GUEST_LOCK_WINDOW_S, now - config.GUEST_CHECK_WINDOW_S
+        # Count, decide and record the attempt in ONE write transaction: separate count-then-insert let 20-40
+        # concurrent wrong guesses through a limit of 5 (review round 1).
+        with db.tx() as t:
+
+            def count(sql: str, *args: Any) -> int:
+                return int(t.execute(sql, args).fetchone()[0])
+
+            pair_fails = count(
+                "SELECT COUNT(*) FROM guest_attempts WHERE reservation_id=? AND client=? AND ok=0 AND ts>?",
+                reservation_id,
+                client,
+                since,
+            )
+            client_fails = count("SELECT COUNT(*) FROM guest_attempts WHERE client=? AND ok=0 AND ts>?", client, since)
+            res_fails = count(
+                "SELECT COUNT(*) FROM guest_attempts WHERE reservation_id=? AND ok=0 AND ts>?", reservation_id, since
+            )
+            checks = count("SELECT COUNT(*) FROM guest_attempts WHERE reservation_id=? AND ok=1 AND ts>?", reservation_id, day)
+            locked = (
+                pair_fails >= config.GUEST_FAILS_PER_CLIENT_RESERVATION
+                or client_fails >= config.GUEST_FAILS_PER_CLIENT
+                or res_fails >= config.GUEST_FAILS_PER_RESERVATION_GLOBAL
+            )
+            row = None if locked else t.execute("SELECT * FROM reservations WHERE id=?", (reservation_id,)).fetchone()
+            res = dict(row) if row else None
+            ok = bool(res) and db.pin_matches(pin, res["pin_salt"] if res else None, res["pin_hash"] if res else None)
+            if not locked and not (ok and checks >= config.GUEST_CHECKS_PER_RESERVATION):
+                t.execute(
+                    "INSERT INTO guest_attempts (ts, client, reservation_id, ok) VALUES (?,?,?,?)",
+                    (now, client, reservation_id, int(ok)),
+                )
+        if locked:
             db.audit("guest.locked", {"reservation_id": reservation_id, "client": client})
             return {
                 "ok": False,
                 "error": "too_many_attempts",
                 "message": "Too many wrong PINs. Try again later, or open the Booking.com app instead.",
             }
-        res = self.reservation(reservation_id)
-        ok = bool(res) and db.pin_matches(pin, res["pin_salt"] if res else None, res["pin_hash"] if res else None)
-        with db.tx() as t:
-            t.execute(
-                "INSERT INTO guest_attempts (ts, client, reservation_id, ok) VALUES (?,?,?,?)",
-                (now, client, reservation_id, int(ok)),
-            )
         if not ok or res is None:
             return {"ok": False, "error": "not_found", "message": "Reservation number and PIN don't match."}
+        if checks >= config.GUEST_CHECKS_PER_RESERVATION:
+            # The checker runs the live engine; capping checks per booking stops it being an unlimited oracle for
+            # tuning scam wording (review round 1).
+            db.audit("guest.check_limit", {"reservation_id": reservation_id, "client": client})
+            return {
+                "ok": False,
+                "error": "too_many_checks",
+                "message": "You've checked several messages today. If you're unsure, open your booking in the Booking.com app.",
+            }
+        c = db.con()
         d = self.engine.check(
             text,
             {
@@ -351,6 +455,11 @@ class Service:
         prop = self.property(property_id)
         if not prop:
             raise KeyError(property_id)
+        if session_id:
+            row = db.con().execute("SELECT property_id FROM sessions WHERE id=?", (session_id,)).fetchone()
+            if row and row[0] != property_id:
+                # containing the wrong property used to leave the attacker's session active (review round 1)
+                raise ValueError(f"session {session_id} belongs to {row[0]}, not {property_id}")
         case_id = "C-" + uuid.uuid4().hex[:8].upper()
         with trace(case_id):
             log.warning("containment started property=%s session=%s actor=%s", property_id, session_id, actor)
@@ -433,12 +542,22 @@ class Service:
             "attacker_session": attacker,
             "login_event": ev,
             "actions": [
-                {"action": "revoke_all_sessions", "count": len(sessions)},
-                {"action": "force_password_reset_and_passkey_enrolment", "done": True},
-                {"action": "freeze_payout_bank_changes", "hours": 72},
-                {"action": "rotate_reservation_pins", "count": len(to_warn)},
-                {"action": "warn_guests_in_app", "count": len(to_warn)},
-                {"action": "quarantine_messages_from_session", "count": len(held)},
+                # status says what StayGuard itself enforces vs what it can only record for another system
+                {"action": "revoke_all_sessions", "count": len(sessions), "status": "done"},
+                {
+                    "action": "force_password_reset_and_passkey_enrolment",
+                    "status": "enforced",
+                    "detail": "every new session is critical until the property is marked recovered",
+                },
+                {
+                    "action": "freeze_payout_bank_changes",
+                    "hours": 72,
+                    "status": "requested",
+                    "detail": "flag set for the payouts service",
+                },
+                {"action": "rotate_reservation_pins", "count": len(to_warn), "status": "done"},
+                {"action": "warn_guests_in_app", "count": len(to_warn), "status": "done"},
+                {"action": "quarantine_messages_from_session", "count": len(held), "status": "done"},
             ],
             "messages": [
                 {
@@ -481,6 +600,15 @@ class Service:
             },
         )
         return {"case_id": case_id, "summary": summary, "file": file}
+
+    def recover_property(self, property_id: str, actor: str = "analyst") -> dict[str, Any]:
+        """Mark a contained property as recovered (password reset and passkey done), so new sessions are scored normally."""
+        if not self.property(property_id):
+            raise KeyError(property_id)
+        with db.tx() as t:
+            t.execute("UPDATE properties SET password_reset_required=0 WHERE id=?", (property_id,))
+        db.audit("property.recovered", {"property_id": property_id, "actor": actor})
+        return {"property_id": property_id, "password_reset_required": False}
 
     def cases(self) -> list[dict[str, Any]]:
         return [

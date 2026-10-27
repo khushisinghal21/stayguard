@@ -43,8 +43,7 @@ def results_table(h: dict) -> str:
     rows = [
         (
             "Held-out scams caught, first blind run (frozen before any held-out result was seen)",
-            f"**{f('heldout_first_look_caught')}** of {f('heldout_n_scam')} "
-            f"(wrongly held {f('heldout_first_look_false_holds')})",
+            f"**{f('heldout_first_look_caught')}** of {f('heldout_n_scam')} (wrongly held {f('heldout_first_look_false_holds')})",
         ),
         (
             "Held-out scams caught now (after later fixes; the first run's misses had been seen, so less blind)",

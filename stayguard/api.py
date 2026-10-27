@@ -22,13 +22,14 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import __version__, config, db
 from .logs import setup_logging
-from .service import IdempotencyConflict, Service
+from .service import IdempotencyConflict, IdempotencyInFlight, Service, fail_closed_response
 
 STATIC = Path(__file__).parent / "static"
 _svc: Service | None = None
@@ -79,11 +80,16 @@ def demo_only() -> None:
 
 # ---------------------------------------------------------------- rate limiting
 class TokenBucket:
-    """In-process token bucket per (bucket, client). Good enough for one process; use Redis for several."""
+    """In-process token bucket per (bucket, client). Good enough for one process; use Redis for several.
 
-    def __init__(self) -> None:
+    State is bounded: a client that rotates source addresses used to grow the dict without limit (review round 1). When
+    full, the least recently seen half is dropped; a dropped client restarts with a full bucket, which is the same as a
+    client that has been idle, so nothing is lost but memory."""
+
+    def __init__(self, max_clients: int = 50_000) -> None:
         self.state: dict[tuple[str, str], tuple[float, float]] = {}
         self.lock = threading.Lock()
+        self.max_clients = max_clients
 
     def allow(self, bucket: str, client: str, per_min: float, now: float | None = None) -> bool:
         if per_min <= 0:
@@ -94,7 +100,11 @@ class TokenBucket:
             tokens, last = self.state.get((bucket, client), (cap, now))
             tokens = min(cap, tokens + (now - last) * per_min / 60)
             ok = tokens >= 1
+            self.state.pop((bucket, client), None)  # re-insert so dict order is least- to most-recently seen
             self.state[(bucket, client)] = (tokens - 1 if ok else tokens, now)
+            if len(self.state) > self.max_clients:
+                for key in list(self.state)[: len(self.state) - self.max_clients // 2]:
+                    del self.state[key]
             return ok
 
 
@@ -220,6 +230,8 @@ def health() -> dict[str, Any]:
 def check_message(body: MessageIn) -> dict[str, Any]:
     try:
         return svc().check_message(**body.model_dump())
+    except IdempotencyInFlight:
+        raise HTTPException(409, "message_id is still being processed; retry shortly", headers={"Retry-After": "1"}) from None
     except IdempotencyConflict:
         raise HTTPException(409, "message_id was already used for a different message") from None
 
@@ -234,7 +246,7 @@ def score_session(body: SessionIn) -> dict[str, Any]:
 
 @app.post("/v1/sessions/{session_id}/reads", dependencies=[Depends(internal)])
 def record_reads(session_id: str, body: ReadsIn) -> dict[str, Any]:
-    if not svc().session(session_id):
+    if not db.con().execute("SELECT 1 FROM sessions WHERE id=?", (session_id,)).fetchone():
         raise HTTPException(404, "unknown session")
     return {"recorded": svc().record_reads(session_id, body.reservation_ids)}
 
@@ -243,6 +255,17 @@ def record_reads(session_id: str, body: ReadsIn) -> dict[str, Any]:
 def contain(property_id: str, body: ContainIn) -> dict[str, Any]:
     try:
         return svc().contain(property_id, body.session_id, body.actor)
+    except KeyError:
+        raise HTTPException(404, "unknown property") from None
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from None
+
+
+@app.post("/v1/properties/{property_id}/recovered", dependencies=[Depends(internal)])
+def recovered(property_id: str, body: ContainIn) -> dict[str, Any]:
+    """Analyst confirms the password reset and passkey enrolment happened; new sessions are then scored normally."""
+    try:
+        return svc().recover_property(property_id, body.actor)
     except KeyError:
         raise HTTPException(404, "unknown property") from None
 
@@ -349,6 +372,17 @@ def simulate(property_id: str = "H2") -> dict[str, Any]:
     out = svc().simulate_attack(property_id)
     out["elapsed_ms"] = round((time.perf_counter() - t0) * 1000, 1)
     return out
+
+
+@app.exception_handler(RequestValidationError)
+def _invalid(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Validation errors never echo the submitted values: they can hold message text and PII, and a lone surrogate in
+    the echo crashed the error renderer itself with a 500 (review round 1). A message text that cannot be decoded is a
+    message we cannot check, so the check endpoint holds it rather than returning an error a caller might ignore."""
+    errors = [{"loc": list(e.get("loc", ())), "type": e.get("type", ""), "msg": e.get("msg", "")} for e in exc.errors()]
+    if request.url.path == "/v1/messages/check" and any(e["type"] == "string_unicode" for e in errors):
+        return JSONResponse(fail_closed_response(None, "UndecodableText"), status_code=200)
+    return JSONResponse({"detail": errors}, status_code=422)
 
 
 @app.exception_handler(Exception)

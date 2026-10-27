@@ -300,7 +300,10 @@ class Engine:
         # link still goes to the model/judges instead of the fast path.
         unofficial_link = any(v.verdict != "official" for v in lv)
         # an unknown site plus an instruction ("finish it at <link>") is the shape of lexicon-free phishing
-        unknown_link_with_instruction = any("UNKNOWN_DOMAIN" in v.reasons for v in lv) and bool(INSTRUCTION.search(text))
+        unvouched_kinds = ("UNKNOWN_DOMAIN", "USER_CONTENT_HOST", "BRAND_COUNTRY_DOMAIN", "URL_SHORTENER_HIDES_DESTINATION")
+        unknown_link_with_instruction = any(r in v.reasons for v in lv for r in unvouched_kinds) and bool(
+            INSTRUCTION.search(text)
+        )
         quiet = not (
             sig.money_ask
             or sig.soft_money_ask
@@ -360,6 +363,9 @@ class Engine:
                     except JudgeUnavailable:
                         self.breaker.record(False)
                         self.metrics.judge_failed()
+                    except Exception:
+                        self.breaker.release_probe()  # a bug is not a provider verdict; don't wedge half-open
+                        raise
                 if ruling:
                     path = "judges"
                     judges_out = ruling.as_dict()

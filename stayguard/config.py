@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     retain_raw: bool = False
     raw_retention_days: float = Field(7, gt=0.0)
-    audit_anchor_every: int = Field(20, ge=0)
+    audit_anchor_every: int = Field(1, ge=0)  # 1 = anchor every row, so even the last rows can't be deleted unnoticed
 
     @model_validator(mode="after")
     def _ordered(self) -> Settings:
@@ -125,9 +125,17 @@ DEMO_MODE = _s.demo_mode
 # --- Abuse limits ------------------------------------------------------------------
 RATE_CHECK_PER_MIN = _s.rate_check_per_min  # /v1/messages/check, per client
 RATE_GUEST_PER_MIN = _s.rate_guest_per_min  # /v1/guest/verify, per client
-GUEST_FAILS_PER_RESERVATION = 5  # wrong PINs per reservation within the window before it locks
+# Wrong-PIN limits are per (client, reservation) first, so an attacker who knows a booking can't lock the real guest
+# out of the checker by typing wrong PINs (review round 1). A higher per-reservation cap across all clients still
+# bounds a distributed brute force, and containment rotates the PINs of exposed guests.
+GUEST_FAILS_PER_CLIENT_RESERVATION = 5  # wrong PINs by one client for one reservation within the window
 GUEST_FAILS_PER_CLIENT = 20  # wrong PINs per client across all reservations within the window
+GUEST_FAILS_PER_RESERVATION_GLOBAL = 50  # wrong PINs for one reservation from all clients within the window
 GUEST_LOCK_WINDOW_S = 15 * 60
+# Successful checks per reservation per day: the checker runs the live engine, so unlimited checks with one valid PIN
+# make it an oracle for tuning scam wording (review round 1). Ten a day is plenty for a real guest.
+GUEST_CHECKS_PER_RESERVATION = 10
+GUEST_CHECK_WINDOW_S = 24 * 3600
 
 # --- Data protection ---------------------------------------------------------------
 RETAIN_RAW = _s.retain_raw

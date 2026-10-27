@@ -22,6 +22,7 @@ INTERNAL = [
     ("get", "/v1/audit/verify", None),
     ("post", "/v1/admin/llm-outage", {"on": False}),
     ("post", "/v1/properties/H1/contain", {"session_id": None}),
+    ("post", "/v1/properties/H1/recovered", {}),
 ]
 DEMO_ONLY = [
     ("get", "/v1/samples", None),
@@ -181,3 +182,27 @@ def test_errors_never_leak_a_stack_trace(mode, monkeypatch, service):
         r = c.get("/v1/cases")
     assert r.status_code == 500 and r.json() == {"error": "internal_error", "detail": "RuntimeError"}
     assert "secret internals" not in r.text
+
+
+def test_contain_and_recover_errors_map_to_http_codes(mode, service):
+    c = mode(True)
+    sid = service.score_session("H2", "x", {"hour": 10})["session_id"]
+    assert c.post("/v1/properties/H1/contain", json={"session_id": sid}).status_code == 409  # another property's session
+    assert c.post("/v1/properties/NOPE/contain", json={}).status_code == 404
+    assert c.post("/v1/properties/NOPE/recovered", json={}).status_code == 404
+
+
+def test_validation_errors_do_not_echo_the_input(mode):
+    r = mode(True).post("/v1/messages/check", json={"text": 12345678901234})
+    assert r.status_code == 422 and "12345678901234" not in r.text
+
+
+def test_in_flight_idempotency_key_is_a_retryable_409(mode, monkeypatch):
+    from stayguard import service as service_mod
+
+    def in_flight(*_a, **_k):
+        raise service_mod.IdempotencyInFlight("m")
+
+    monkeypatch.setattr(api.svc(), "check_message", in_flight)
+    r = mode(True).post("/v1/messages/check", json={"text": "hi"})
+    assert r.status_code == 409 and r.headers["retry-after"] == "1"
