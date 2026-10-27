@@ -456,7 +456,10 @@ PHONE_HANDOFF = _rx(
 # arrival") is still a demand when it names where the money goes or says it is due before arrival. Review round 3:
 # passive phrasing has no verb from ACTION, so it was only a "mention" and was delivered clean.
 PAY_DESTINATION = _rx(
-    r"\b(?:payable|settled?|paid|transferred|sent|goes|go|due|credited|deposited|remitted|wired)\s+(?:to|into|by|via|through)\b",
+    r"\b(?:payable|settled?|transferred|credited|deposited|remitted|wired)\s+(?:to|into|by|via|through)\b",
+    # generic verbs only with an explicit destination ("go to the cinema" held a personal SMS in the SMS test split;
+    # recorded in DECISIONS #34)
+    r"\b(?:paid|sent|due|goes|go)\s+(?:to|into|by|via)\s+(?:our|my|this|the hotel'?s?)\b",
     r"\b(?:to|into)\s+(?:our|the hotel'?s?|my|this)\s+(?:account|wallet|number|e-?mail)\b",
 )
 PRE_ARRIVAL = _rx(
