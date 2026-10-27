@@ -1,0 +1,5 @@
+
+Found 41 errors.
+[*] 21 fixable with the `--fix` option (18 hidden fixes can be enabled with the `--unsafe-fixes` option).
+
+15 files would be reformatted, 5 files already formatted

@@ -1,0 +1,181 @@
+training classifier ...
+training session model ...
+A golden ...
+B real sms ...
+C zero-day links ...
+F robustness ...
+E cost/latency ...
+{
+ "baseline_blocklist_only": {
+  "tp": 10,
+  "fn": 50,
+  "fp": 0,
+  "tn": 55,
+  "catch_rate": 0.1667,
+  "false_alarm_rate": 0.0,
+  "precision": 1.0,
+  "f1": 0.2857
+ },
+ "baseline_generic_spam_filter": {
+  "tp": 37,
+  "fn": 23,
+  "fp": 13,
+  "tn": 42,
+  "catch_rate": 0.6167,
+  "false_alarm_rate": 0.2364,
+  "precision": 0.74,
+  "f1": 0.6727
+ },
+ "stayguard_full": {
+  "tp": 60,
+  "fn": 0,
+  "fp": 0,
+  "tn": 55,
+  "catch_rate": 1.0,
+  "false_alarm_rate": 0.0,
+  "precision": 1.0,
+  "f1": 1.0,
+  "legit_warned_rate": 0.0
+ },
+ "stayguard_rules_only": {
+  "tp": 56,
+  "fn": 4,
+  "fp": 0,
+  "tn": 55,
+  "catch_rate": 0.9333,
+  "false_alarm_rate": 0.0,
+  "precision": 1.0,
+  "f1": 0.9655
+ },
+ "stayguard_zero_day_links_blocklist_off": {
+  "tp": 60,
+  "fn": 0,
+  "fp": 0,
+  "tn": 55,
+  "catch_rate": 1.0,
+  "false_alarm_rate": 0.0,
+  "precision": 1.0,
+  "f1": 1.0,
+  "legit_warned_rate": 0.0
+ },
+ "stayguard_degraded_llm_down": {
+  "tp": 58,
+  "fn": 2,
+  "fp": 0,
+  "tn": 55,
+  "catch_rate": 0.9667,
+  "false_alarm_rate": 0.0,
+  "precision": 1.0,
+  "f1": 0.9831,
+  "legit_warned_rate": 0.0
+ }
+}
+{
+ "real_ham": {
+  "n": 1207,
+  "decisions": {
+   "deliver": 1207
+  },
+  "held_or_blocked_rate": 0.0,
+  "warned_rate": 0.0,
+  "examples_held": []
+ },
+ "real_spam": {
+  "n": 187,
+  "decisions": {
+   "deliver": 172,
+   "hold": 15
+  },
+  "held_or_blocked_rate": 0.0802,
+  "warned_rate": 0.0
+ }
+}
+{
+ "booking_themed_phishing_in_feeds": 363,
+ "c1_brand_lookalikes_withheld": 181,
+ "c1_detection_rate": 0.9116,
+ "c2_random_feed_sample": 3000,
+ "c2_detection_rate": 0.03,
+ "c3_unseen_legit_domains": 99967,
+ "c3_false_positive_rate": 0.0001,
+ "c3_false_positive_examples": [
+  "secure-hotel-booking.com",
+  "laoda.info",
+  "reservation-booking-system.com",
+  "plugin-update.support",
+  "expedia-aarp.com",
+  "hotel4booking.com"
+ ],
+ "c3_legit_with_brand_token": 61,
+ "c3_brand_token_false_positive_rate": 0.0656,
+ "c3_brand_token_fp_examples": [
+  "secure-hotel-booking.com",
+  "reservation-booking-system.com",
+  "expedia-aarp.com",
+  "hotel4booking.com"
+ ],
+ "openphish_generic_urls": 300,
+ "openphish_heuristic_detection_rate": 0.03,
+ "note": "In production the blocklist and heuristics run together; heuristics exist for links nobody has reported yet. A flagged legit link is 'held' only when the message also asks for money; otherwise the guest sees a warning."
+}
+{
+ "n": 1000,
+ "paths": {
+  "rule": 998,
+  "model": 1,
+  "judges": 1
+ },
+ "judge_share": 0.001,
+ "p50_ms": 2.96,
+ "p95_ms": 4.96,
+ "p99_ms": 7.28,
+ "llm_cost_per_call_usd": 0.0016,
+ "cost_per_1000_messages_usd": 0.0016,
+ "cost_per_1000_if_every_message_went_to_llm_usd": 1.6,
+ "note": "Latency excludes network; judge path measured with the offline judge. With a hosted LLM add ~1-3 s to judge-path messages only."
+}
+{
+ "no_urgency": {
+  "n": 60,
+  "catch_rate": 1.0,
+  "missed_ids": []
+ },
+ "neutral_new_domain": {
+  "n": 60,
+  "catch_rate": 1.0,
+  "missed_ids": []
+ },
+ "leetspeak": {
+  "n": 60,
+  "catch_rate": 0.9833,
+  "missed_ids": [
+   "g058"
+  ]
+ },
+ "zero_width": {
+  "n": 60,
+  "catch_rate": 1.0,
+  "missed_ids": []
+ },
+ "spaced_letters": {
+  "n": 60,
+  "catch_rate": 0.9833,
+  "missed_ids": [
+   "g058"
+  ]
+ },
+ "combined": {
+  "n": 60,
+  "catch_rate": 0.95,
+  "missed_ids": [
+   "g006",
+   "g014",
+   "g058"
+  ]
+ },
+ "legit_with_zero_width": {
+  "n": 55,
+  "held_rate": 0.0364,
+  "warned_rate": 0.9636
+ }
+}

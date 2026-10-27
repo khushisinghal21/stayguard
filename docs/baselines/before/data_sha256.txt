@@ -1,0 +1,6 @@
+7c2ae42a7353905ea136e5c2287f17c92c5435826598bfbb8491c6f0c7b1fc06  data/raw/hotels.csv
+ca91496d33a50563e0c9c7ff8231f0dad5c6a0b400f8d271941dbf9deeb19439  data/raw/openphish-feed.txt
+70c6c2e24e6b3484e7ace27b079723e55937bc1f4cbd98bea38a472ec8e37326  data/raw/phishing-domains-ACTIVE.txt
+7d039a24a6083ed9ef0f806ebad56bbb976e3aeb8de05669173bfdc4996c239d  data/raw/sms.tsv
+3ad5aa034b4ad9eaf5c27b3bd176e906a7eea0fd1126d37789c06c05a6b80795  data/raw/top-10000-domains.txt
+f20cbd5f1b4d975135d6ccf7fe776e4ce681f86003641e70df651eb98824362c  data/raw/top-1m.txt

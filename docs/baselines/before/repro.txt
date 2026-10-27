@@ -1,0 +1,13 @@
+1.1 predicted ['0409', '4012', '1679'] actual ['0409', '4012', '1679'] MATCH
+1.2 demo-pin status 200 {'reservation_id': 'R100000', 'pin': '0409'}
+1.2 messages open 200 outage open 200
+1.3 first deliver replayed scam -> deliver True
+1.6 judge KeyError -> degraded warn ['DEGRADED_WARN'] breaker failures 1
+1.7 classifier exception propagates (no fail-closed)
+1.8 Pay here booking-verify.ro/pay now -> []
+1.8 confirm at guest-pay.pl/x -> []
+1.8 go to reserva-cartao.com.br/pay -> ['reserva-cartao.com']
+1.8 verify at hotel-pay.ws -> []
+1.8 visit stay-pay.lat -> []
+1.10 raw text in /v1/messages: True
+1.11 services built by 4 cold threads: 4

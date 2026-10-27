@@ -1,0 +1,2 @@
+stayguard/service.py:185: error: Argument 1 to "get" of "dict" has incompatible type "Any | None"; expected "str"  [arg-type]
+Found 2 errors in 1 file (checked 11 source files)

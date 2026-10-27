@@ -1,0 +1,20 @@
+....................                                                     [100%]
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.13.17-final-0 _______________
+
+Name                        Stmts   Miss  Cover
+-----------------------------------------------
+stayguard/__init__.py           1      0   100%
+stayguard/api.py              138     29    79%
+stayguard/classifier.py        98     47    52%
+stayguard/config.py            27      0   100%
+stayguard/db.py                98      5    95%
+stayguard/engine.py           193     12    94%
+stayguard/judges.py           138     26    81%
+stayguard/links.py            178     19    89%
+stayguard/service.py          146      4    97%
+stayguard/session_risk.py     125     46    63%
+stayguard/signals.py          192      6    97%
+-----------------------------------------------
+TOTAL                        1334    194    85%
+20 passed in 22.33s
