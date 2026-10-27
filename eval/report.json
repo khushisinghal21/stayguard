@@ -1,7 +1,7 @@
 {
-  "generated": "2026-10-27 13:18",
+  "generated": "2026-10-27 17:53",
   "fast": false,
-  "git_commit": "5674595",
+  "git_commit": "d98608d",
   "heldout_sha256": "9defc0ab5ab31ab49d821b73ff795153cda580b09b1b3d40fd7b81e89d0b6a5c",
   "heldout_commit": "04376a3",
   "data": {
@@ -125,56 +125,89 @@
         "hijack_link": {
           "n": 6,
           "correct": 6,
+          "held": 6,
+          "warned": 0,
+          "clean": 0,
           "accuracy": 1.0
         },
         "hijack_link_novel": {
           "n": 12,
           "correct": 12,
+          "held": 12,
+          "warned": 0,
+          "clean": 0,
           "accuracy": 1.0
         },
         "hijack_nolink": {
           "n": 11,
           "correct": 11,
+          "held": 11,
+          "warned": 0,
+          "clean": 0,
           "accuracy": 1.0
         },
         "hijack_multilingual": {
           "n": 17,
           "correct": 17,
+          "held": 17,
+          "warned": 0,
+          "clean": 0,
           "accuracy": 1.0
         },
         "injection": {
           "n": 5,
           "correct": 5,
+          "held": 5,
+          "warned": 0,
+          "clean": 0,
           "accuracy": 1.0
         },
         "obfuscation": {
           "n": 4,
           "correct": 4,
+          "held": 4,
+          "warned": 0,
+          "clean": 0,
           "accuracy": 1.0
         },
         "overpayment": {
           "n": 5,
           "correct": 5,
+          "held": 5,
+          "warned": 0,
+          "clean": 0,
           "accuracy": 1.0
         },
         "legit_logistics": {
           "n": 22,
           "correct": 22,
+          "held": 0,
+          "warned": 0,
+          "clean": 22,
           "accuracy": 1.0
         },
         "legit_payment_talk": {
           "n": 17,
           "correct": 17,
+          "held": 0,
+          "warned": 1,
+          "clean": 16,
           "accuracy": 1.0
         },
         "legit_multilingual": {
           "n": 11,
           "correct": 11,
+          "held": 0,
+          "warned": 0,
+          "clean": 11,
           "accuracy": 1.0
         },
         "legit_guest": {
           "n": 5,
           "correct": 5,
+          "held": 0,
+          "warned": 0,
+          "clean": 5,
           "accuracy": 1.0
         }
       },
@@ -224,6 +257,18 @@
         "rule": 106,
         "model": 3,
         "judges": 6
+      },
+      "paired_tests": {
+        "full_vs_classifier_only_on_scams": {
+          "only_first": 1,
+          "only_second": 0,
+          "p_value": 1.0
+        },
+        "full_vs_classifier_only_on_legit_holds": {
+          "only_first": 0,
+          "only_second": 5,
+          "p_value": 0.0625
+        }
       },
       "errors_and_warnings": [
         {
@@ -336,66 +381,105 @@
         "reported_wording": {
           "n": 10,
           "correct": 10,
+          "held": 10,
+          "warned": 0,
+          "clean": 0,
           "accuracy": 1.0
         },
         "reported_pattern": {
           "n": 37,
           "correct": 34,
+          "held": 34,
+          "warned": 2,
+          "clean": 1,
           "accuracy": 0.9189
         },
         "unsupported_language": {
           "n": 6,
           "correct": 6,
+          "held": 6,
+          "warned": 0,
+          "clean": 0,
           "accuracy": 1.0
         },
         "obfuscated": {
           "n": 5,
           "correct": 4,
+          "held": 4,
+          "warned": 1,
+          "clean": 0,
           "accuracy": 0.8
         },
         "injection": {
           "n": 2,
           "correct": 2,
+          "held": 2,
+          "warned": 0,
+          "clean": 0,
           "accuracy": 1.0
         },
         "guest_to_hotel_malware": {
           "n": 3,
           "correct": 0,
+          "held": 0,
+          "warned": 2,
+          "clean": 1,
           "accuracy": 0.0
         },
         "overpayment": {
           "n": 3,
           "correct": 2,
+          "held": 2,
+          "warned": 1,
+          "clean": 0,
           "accuracy": 0.6667
         },
         "legit_template": {
           "n": 6,
           "correct": 6,
+          "held": 0,
+          "warned": 0,
+          "clean": 6,
           "accuracy": 1.0
         },
         "legit_self_service": {
           "n": 5,
           "correct": 5,
+          "held": 0,
+          "warned": 0,
+          "clean": 5,
           "accuracy": 1.0
         },
         "legit_payment": {
           "n": 10,
           "correct": 9,
+          "held": 1,
+          "warned": 0,
+          "clean": 9,
           "accuracy": 0.9
         },
         "legit_logistics": {
           "n": 18,
           "correct": 18,
+          "held": 0,
+          "warned": 2,
+          "clean": 16,
           "accuracy": 1.0
         },
         "legit_multilingual": {
           "n": 13,
           "correct": 13,
+          "held": 0,
+          "warned": 0,
+          "clean": 13,
           "accuracy": 1.0
         },
         "legit_guest": {
           "n": 6,
           "correct": 6,
+          "held": 0,
+          "warned": 0,
+          "clean": 6,
           "accuracy": 1.0
         }
       },
@@ -475,6 +559,18 @@
         "rule": 93,
         "judges": 18,
         "model": 13
+      },
+      "paired_tests": {
+        "full_vs_classifier_only_on_scams": {
+          "only_first": 5,
+          "only_second": 3,
+          "p_value": 0.72656
+        },
+        "full_vs_classifier_only_on_legit_holds": {
+          "only_first": 1,
+          "only_second": 0,
+          "p_value": 1.0
+        }
       },
       "errors_and_warnings": [
         {
@@ -617,7 +713,8 @@
     "real_ham": {
       "n": 1130,
       "decisions": {
-        "deliver": 1130,
+        "deliver": 1129,
+        "warn": 1,
         "hold": 0,
         "block": 0
       },
@@ -626,10 +723,12 @@
         0.0,
         0.0034
       ],
-      "warned_rate": 0.0,
+      "warned_rate": 0.0009,
       "fail_closed": 0,
       "examples_held": [],
-      "examples_warned": []
+      "examples_warned": [
+        "Actually i deleted my old website..now i m blogging at magicalsongs.blogspot.com"
+      ]
     },
     "real_spam": {
       "n": 163,
@@ -666,7 +765,7 @@
         "airbnb.confirm-booking0239.com"
       ],
       "c2_n": 3000,
-      "c2_detection_rate": 0.0303,
+      "c2_detection_rate": 0.0377,
       "c3_ranks": [
         10000,
         110000
@@ -710,13 +809,13 @@
         "bookingoyvip.com"
       ],
       "c2_n": 3000,
-      "c2_detection_rate": 0.0377,
+      "c2_detection_rate": 0.049,
       "c3_ranks": [
         110000,
         210000
       ],
       "c3_n": 99969,
-      "c3_false_positive_rate": 6e-05,
+      "c3_false_positive_rate": 7e-05,
       "c3_false_positive_ci95": [
         0.0,
         0.0001
@@ -727,6 +826,7 @@
         "q8booking.com",
         "booking-wp-plugin.com",
         "expedia.biz",
+        "accupassadmin.azurewebsites.net",
         "la-chronique-agora.com"
       ],
       "c3_brand_token_n": 49,
@@ -767,16 +867,16 @@
     "n": 1000,
     "mix": "970 SMS test-split messages + 30 held-out scams",
     "paths": {
-      "rule": 987,
+      "rule": 986,
       "model": 5,
-      "judges": 8
+      "judges": 9
     },
-    "judge_share": 0.008,
-    "p50_ms": 2.26,
-    "p95_ms": 3.85,
-    "p99_ms": 5.62,
+    "judge_share": 0.009,
+    "p50_ms": 3.38,
+    "p95_ms": 6.56,
+    "p99_ms": 9.58,
     "est_cost_per_judged_message_usd": 0.000196,
-    "est_cost_per_1000_messages_usd": 0.0016,
+    "est_cost_per_1000_messages_usd": 0.0018,
     "est_cost_per_1000_if_every_message_went_to_llm_usd": 0.1925,
     "price_source": "Claude Haiku 5.5 $0.1/MTok in, $0.5/MTok out (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-27)",
     "note": "ESTIMATE, not a bill: input tokens = prompt characters / 4, output = 150 tokens per judge, 2 judges. Latency is in-process, excludes network and DB, and the judge path ran the offline judge; a hosted LLM adds roughly 1-3 s to judged messages only.",
@@ -787,36 +887,48 @@
     "dev": {
       "no_urgency": {
         "n": 60,
+        "n_changed": 25,
         "catch_rate": 1.0,
+        "catch_rate_changed_only": 1.0,
         "missed_ids": []
       },
       "neutral_new_domain": {
         "n": 60,
+        "n_changed": 33,
         "catch_rate": 1.0,
+        "catch_rate_changed_only": 1.0,
         "missed_ids": []
       },
       "leetspeak": {
         "n": 60,
+        "n_changed": 57,
         "catch_rate": 0.9833,
+        "catch_rate_changed_only": 0.9825,
         "missed_ids": [
           "g058"
         ]
       },
       "zero_width": {
         "n": 60,
+        "n_changed": 60,
         "catch_rate": 1.0,
+        "catch_rate_changed_only": 1.0,
         "missed_ids": []
       },
       "spaced_letters": {
         "n": 60,
+        "n_changed": 56,
         "catch_rate": 0.9833,
+        "catch_rate_changed_only": 0.9821,
         "missed_ids": [
           "g058"
         ]
       },
       "combined": {
         "n": 60,
+        "n_changed": 60,
         "catch_rate": 0.9833,
+        "catch_rate_changed_only": 0.9833,
         "missed_ids": [
           "g058"
         ]
@@ -830,7 +942,9 @@
     "heldout": {
       "no_urgency": {
         "n": 66,
+        "n_changed": 30,
         "catch_rate": 0.7879,
+        "catch_rate_changed_only": 0.7667,
         "missed_ids": [
           "h006",
           "h016",
@@ -850,7 +964,9 @@
       },
       "neutral_new_domain": {
         "n": 66,
+        "n_changed": 30,
         "catch_rate": 0.8485,
+        "catch_rate_changed_only": 0.8333,
         "missed_ids": [
           "h020",
           "h025",
@@ -866,7 +982,9 @@
       },
       "leetspeak": {
         "n": 66,
+        "n_changed": 62,
         "catch_rate": 0.803,
+        "catch_rate_changed_only": 0.7903,
         "missed_ids": [
           "h015",
           "h020",
@@ -885,7 +1003,9 @@
       },
       "zero_width": {
         "n": 66,
+        "n_changed": 65,
         "catch_rate": 0.9242,
+        "catch_rate_changed_only": 0.9231,
         "missed_ids": [
           "h056",
           "h057",
@@ -896,7 +1016,9 @@
       },
       "spaced_letters": {
         "n": 66,
+        "n_changed": 60,
         "catch_rate": 0.7576,
+        "catch_rate_changed_only": 0.7333,
         "missed_ids": [
           "h006",
           "h015",
@@ -917,7 +1039,9 @@
       },
       "combined": {
         "n": 66,
+        "n_changed": 66,
         "catch_rate": 0.6515,
+        "catch_rate_changed_only": 0.6515,
         "missed_ids": [
           "h006",
           "h015",
@@ -959,7 +1083,7 @@
     "n_sms_train": 3102,
     "n_hotel_train": 752
   },
-  "runtime_s": 28.7,
+  "runtime_s": 49.7,
   "headline": {
     "model_low": 0.03,
     "model_high": 0.52,
@@ -980,11 +1104,13 @@
     "sms_ham_n": 1130,
     "c1_heldout": 0.8846,
     "c1_heldout_n": 182,
-    "c2_heldout": 0.0377,
-    "c3_heldout_fp": 6e-05,
+    "c2_heldout": 0.049,
+    "c3_heldout_fp": 7e-05,
     "c3_heldout_n": 99969,
     "robust_combined_heldout": 0.6515,
-    "judge_share": 0.008,
+    "robust_combined_heldout_changed": 0.6515,
+    "heldout_mcnemar_p": 0.72656,
+    "judge_share": 0.009,
     "hotel_judge_share": 0.1452,
     "hotel_est_cost_per_1000": 0.0284,
     "heldout_classifier_only_caught": 0.8485,
@@ -1002,9 +1128,9 @@
       0.0034
     ],
     "fail_closed_crashes": 0,
-    "p50_ms": 2.26,
-    "p95_ms": 3.85,
-    "est_cost_per_1000": 0.0016,
+    "p50_ms": 3.38,
+    "p95_ms": 6.56,
+    "est_cost_per_1000": 0.0018,
     "est_cost_per_1000_all_llm": 0.1925
   },
   "heldout_first_look": {

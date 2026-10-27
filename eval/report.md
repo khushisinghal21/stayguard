@@ -1,6 +1,6 @@
 # StayGuard evaluation report
 
-Generated 2026-10-27 13:18 at commit `5674595`. Reproduce with `python -m eval.evaluate`.
+Generated 2026-10-27 17:53 at commit `d98608d`. Reproduce with `python -m eval.evaluate`.
 Data manifest `c0cc5d1b1f71ce5d` (feeds fetched 2026-10-27T06:19:37+0000). Held-out set sha256 `9defc0ab5ab31ab4...`, committed in `04376a3`.
 Model thresholds: MODEL_LOW 0.03, MODEL_HIGH 0.52 (eval/calibration.json).
 
@@ -8,7 +8,7 @@ Model thresholds: MODEL_LOW 0.03, MODEL_HIGH 0.52 (eval/calibration.json).
 
 ## A. Messages: StayGuard vs baselines (dev and held-out v1)
 
-Dev: 115 hand-written messages (60 scams). Held-out: 124 messages (66 scams) built from cited public scam reports and hotel templates (`data/curated/HELDOUT_SOURCES.md`).
+Dev: 115 hand-written messages (60 scams). Held-out: 124 messages (66 scams; 10 reuse wording quoted in a cited report, the rest paraphrase reported patterns or were written by the rules' author; `data/curated/HELDOUT_SOURCES.md`). Not blind after its first run.
 
 | System | Held-out v1 caught | Held-out v1 false holds | Dev caught | Dev false holds |
 |---|---|---|---|---|
@@ -26,23 +26,26 @@ Held-out, StayGuard: caught 88% (78%-94%) of scams, falsely held 2% (0%-9%) of l
 
 **First look** (frozen in `eval/heldout_first_look.json`, commit `fe4a82e`, 2026-10-27 08:07): caught 67%, falsely held 2%. Any later change that was motivated by held-out results makes the current held-out numbers less blind than the first look.
 
-Held-out accuracy by category:
+Held-out v1 by category:
 
-| Category | n | Accuracy |
-|---|---|---|
-| guest_to_hotel_malware | 3 | 0% |
-| injection | 2 | 100% |
-| legit_guest | 6 | 100% |
-| legit_logistics | 18 | 100% |
-| legit_multilingual | 13 | 100% |
-| legit_payment | 10 | 90% |
-| legit_self_service | 5 | 100% |
-| legit_template | 6 | 100% |
-| obfuscated | 5 | 80% |
-| overpayment | 3 | 67% |
-| reported_pattern | 37 | 92% |
-| reported_wording | 10 | 100% |
-| unsupported_language | 6 | 100% |
+| Category | n | Accuracy | Held | Warned | Delivered clean |
+|---|---|---|---|---|---|
+| guest_to_hotel_malware | 3 | 0% | 0 | 2 | 1 |
+| injection | 2 | 100% | 2 | 0 | 0 |
+| legit_guest | 6 | 100% | 0 | 0 | 6 |
+| legit_logistics | 18 | 100% | 0 | 2 | 16 |
+| legit_multilingual | 13 | 100% | 0 | 0 | 13 |
+| legit_payment | 10 | 90% | 1 | 0 | 9 |
+| legit_self_service | 5 | 100% | 0 | 0 | 5 |
+| legit_template | 6 | 100% | 0 | 0 | 6 |
+| obfuscated | 5 | 80% | 4 | 1 | 0 |
+| overpayment | 3 | 67% | 2 | 1 | 0 |
+| reported_pattern | 37 | 92% | 34 | 2 | 1 |
+| reported_wording | 10 | 100% | 10 | 0 | 0 |
+| unsupported_language | 6 | 100% | 6 | 0 | 0 |
+
+Paired exact McNemar test, full system vs its classifier alone, on the same held-out v1 scams: full caught 5 the classifier missed, the classifier caught 3 the full system missed, p = 0.72656.
+
 
 Held-out accuracy by language:
 
@@ -83,7 +86,7 @@ Dev misses, false holds and warned legit messages:
 
 ## B. Real everyday messages (UCI SMS test split)
 
-- 1130 real personal SMS through the full pipeline as hotel->guest on a pay-at-property booking: **0.00% held** (0.00%-0.34%), 0.00% delivered with a warning.
+- 1130 real personal SMS through the full pipeline as hotel->guest on a pay-at-property booking: **0.00% held** (0.00%-0.34%), 0.09% delivered with a warning.
 - 163 real spam SMS: 23.3% held (generic spam, not hotel scams).
 - Caveat: these are personal SMS, not hotel conversations. They show the system rarely interferes with ordinary chat; they do not measure false holds on real hotel traffic, which needs platform data.
 
@@ -92,23 +95,25 @@ Dev misses, false holds and warned legit messages:
 | | Held-out | Dev (tuned on) |
 |---|---|---|
 | C1 Booking look-alike phishing hosts caught | 88.5% of 182 | 91.2% of 181 |
-| C2 random hosts from the whole feed caught | 3.8% of 3,000 | 3.0% of 3,000 |
-| C3 legit domains flagged | 0.006% of 99,969 (ranks 110,000-210,000) | 0.006% of 99,967 |
+| C2 random hosts from the whole feed caught | 4.9% of 3,000 | 3.8% of 3,000 |
+| C3 legit domains flagged | 0.007% of 99,969 (ranks 110,000-210,000) | 0.006% of 99,967 |
 | C3 legit domains with a travel-brand word flagged | 8.2% of 49 | 6.6% of 61 |
 
-C1 hosts were selected because they contain 'booking', which is itself a heuristic feature, so C1 measures look-alike coverage; C2 is the honest general zero-day number. Held-out flagged legit examples: booking4you.biz, fuck-a-girl-goday.com, q8booking.com, booking-wp-plugin.com, expedia.biz, la-chronique-agora.com. Held-out missed look-alikes: document1083921.aremusbooking.com, hire.easyinterviewbookingsp.com, hotelbookingguard.com, mail.vabookings.com, sanrafaelriveradventurebooking.com, shop.bookingyourrooms.com.
+C1 hosts were selected because they contain 'booking', which is itself a heuristic feature, so C1 measures look-alike coverage; C2 is the honest general zero-day number. Held-out flagged legit examples: booking4you.biz, fuck-a-girl-goday.com, q8booking.com, booking-wp-plugin.com, expedia.biz, accupassadmin.azurewebsites.net, la-chronique-agora.com. Held-out missed look-alikes: document1083921.aremusbooking.com, hire.easyinterviewbookingsp.com, hotelbookingguard.com, mail.vabookings.com, sanrafaelriveradventurebooking.com, shop.bookingyourrooms.com.
 OpenPhish (300 live URLs, all brands): 3.0% by heuristics alone. Heuristics exist for links nobody has reported yet; in production the blocklist runs too. A flagged legit link is held only when the message also asks for money; otherwise the guest sees a warning.
 
 ## F. Robustness: scams rewritten to dodge filters
 
-| Rewrite | Held-out caught | Dev caught |
+Held-out v1 (not blind). The changed-only rate excludes scams the rewrite left unchanged; zero-width characters are stripped before any rule, so that row checks the stripping, not a new attack.
+
+| Rewrite | Held-out v1 caught | Dev caught |
 |---|---|---|
-| no_urgency | 79% | 100% |
-| neutral_new_domain | 85% | 100% |
-| leetspeak | 80% | 98% |
-| zero_width | 92% | 100% |
-| spaced_letters | 76% | 98% |
-| combined | 65% | 98% |
+| no_urgency | 79% (changed only: 77%, n=30) | 100% |
+| neutral_new_domain | 85% (changed only: 83%, n=30) | 100% |
+| leetspeak | 80% (changed only: 79%, n=62) | 98% |
+| zero_width | 92% (changed only: 92%, n=65) | 100% |
+| spaced_letters | 76% (changed only: 73%, n=60) | 98% |
+| combined | 65% (changed only: 65%, n=66) | 98% |
 
 Legit held-out messages with zero-width characters inserted: 2% held, 98% warned.
 
@@ -127,9 +132,9 @@ Synthetic data is separable by construction, so this is a plumbing check, not ev
 
 ## E. Cost and latency (970 SMS test-split messages + 30 held-out scams)
 
-- Paths: {'rule': 987, 'model': 5, 'judges': 8}; share sent to the AI judges: **0.8%** on this SMS-heavy mix, **14.5%** on the held-out v1 hotel messages (estimated $0.0284 per 1,000 at that share).
-- Latency p50 2.26 ms, p95 3.85 ms, p99 5.62 ms
-- **Estimated** LLM cost: $0.0016 per 1,000 messages, vs $0.1925 if every message went to the judges ($0.000196 per judged message). Price: Claude Haiku 5.5 $0.1/MTok in, $0.5/MTok out (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-27).
+- Paths: {'rule': 986, 'model': 5, 'judges': 9}; share sent to the AI judges: **0.9%** on this SMS-heavy mix, **14.5%** on the held-out v1 hotel messages (estimated $0.0284 per 1,000 at that share).
+- Latency p50 3.38 ms, p95 6.56 ms, p99 9.58 ms
+- **Estimated** LLM cost: $0.0018 per 1,000 messages, vs $0.1925 if every message went to the judges ($0.000196 per judged message). Price: Claude Haiku 5.5 $0.1/MTok in, $0.5/MTok out (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-27).
 - ESTIMATE, not a bill: input tokens = prompt characters / 4, output = 150 tokens per judge, 2 judges. Latency is in-process, excludes network and DB, and the judge path ran the offline judge; a hosted LLM adds roughly 1-3 s to judged messages only.
 
 ## Classifier and calibration

@@ -12,11 +12,12 @@ domains and languages the model has never seen, and it is fully explainable. The
 at the desk" or "you pay the driver directly".
 
 ### 2. Rules first, model second, LLM last
-Rules settle almost all of a realistic mix in a few milliseconds (p50 <!-- num:p50_ms -->2.3 ms<!-- /num -->). The model
-settles most of the rest. The judges see only what's left (<!-- num:judge_share -->0.8%<!-- /num --> of the SMS-heavy mix, but
+Rules settle almost all of an SMS-heavy mix in a few milliseconds (p50 <!-- num:p50_ms -->3.4 ms<!-- /num -->, in-process,
+offline judge). On hotel messages the rules settle less, and of what they leave the judges, not the model, settle most
+(review round 2, C7: the earlier "the model settles most of the rest" was wrong; path counts are in `eval/report.md`). The judges see only what's left (<!-- num:judge_share -->0.9%<!-- /num --> of the SMS-heavy mix, but
 <!-- num:hotel_judge_share -->14.5%<!-- /num --> of the hotel messages in held-out v1, about
 <!-- num:hotel_est_cost_per_1000 -->$0.0284<!-- /num --> per 1,000 there), which keeps
-the **estimated** LLM cost at <!-- num:est_cost_per_1000 -->$0.0016<!-- /num --> per 1,000 messages instead of
+the **estimated** LLM cost at <!-- num:est_cost_per_1000 -->$0.0018<!-- /num --> per 1,000 messages instead of
 <!-- num:est_cost_per_1000_all_llm -->$0.1925<!-- /num --> if every message went to the judges (published Claude Haiku 5.5 price,
 estimated token counts — an estimate, not a bill). An LLM-first design would also make an attacker's prompt
 injection part of every decision.
@@ -55,15 +56,16 @@ need a second signal, a brand word counts only when it stands alone ("booking-ch
 "trybooking.com"), and punycode counts only when one label mixes Latin with Cyrillic/Greek. False positives
 fell by about an order of magnitude on the ranges we tuned on (figures from that tuning session, not reproducible from
 the current report); on 100k never-examined domains (ranks 110k–210k) the rate is
-<!-- num:c3_heldout_fp -->0.006%<!-- /num -->, but <!-- num:c3_heldout_brand_fp -->8.2%<!-- /num --> for the
+<!-- num:c3_heldout_fp -->0.007%<!-- /num -->, but <!-- num:c3_heldout_brand_fp -->8.2%<!-- /num --> for the
 <!-- num:c3_heldout_brand_n -->49<!-- /num --> of them that contain a travel-brand word. The heuristics are travel-specific
-(<!-- num:c2_heldout -->3.8%<!-- /num --> of random feed hosts caught with the blocklist off); the blocklist covers everything else.
+(<!-- num:c2_heldout -->4.9%<!-- /num --> of random feed hosts caught with the blocklist off); the blocklist covers everything else.
 
 ### 9. Honest evaluation over impressive numbers
 The first zero-day test reported 100%, but it selected domains containing "booking", which is the heuristic's own
 feature. We kept it, labelled it, and added a random feed sample, a 100k legit-domain false-positive test, and
 mutation attacks (deadline removed, fresh brand-free domain, leetspeak, hidden characters, spaced letters). The
-"fresh domain" attack exposed a fast-path gap (82% at first, 100% after the fix, both on the dev set), which is why it's in
+"fresh domain" attack exposed a fast-path gap (roughly four in five caught at first, all after the fix, both on the dev set;
+figures from that tuning session, not reproducible from the current report), which is why it's in
 the suite. That fix was itself tuned on dev, which is exactly why the held-out set (#13) exists.
 
 ### 10. Tamper-evident audit trail
@@ -97,8 +99,15 @@ Chosen over: hand-set 0.10 / 0.90. `eval/calibrate.py` picks MODEL_LOW/MODEL_HIG
 dev set by a rule fixed in advance (≤1% of calibration scams below LOW; ≤1% of calibration legit above HIGH). The first
 result (0.26 / 0.46, `eval/calibration.json` at commit `ec2348b`) was much narrower than the hand-set band. After
 round 1 removed duplicate SMS texts (#30) the same rule gives LOW <!-- num:model_low -->0.03<!-- /num --> / HIGH
-<!-- num:model_high -->0.52<!-- /num -->: the de-duplicated model is less sure of some scams, so the rule widens the band
-and more messages reach the judges. We kept the rule rather than pick numbers we liked.
+<!-- num:model_high -->0.52<!-- /num -->. Round 2 (C3) showed the reason we first gave ("the de-duplicated model is less sure
+of scams") was wrong: with ~160 calibration scams, "≤1% below LOW" means LOW is set by the second-lowest-scoring
+calibration scam, so it swings with which few SMS spam rows land in the calibration split (0.03 to 0.28 across the
+four model × split combinations the reviewer tried). Round 2 (C4) also showed the guarantee doesn't hold where it
+matters: the pooled set is ~88% SMS, LOW is fixed by two generic SMS texts, and on hotel dev messages about 9% of
+legitimate ones score above HIGH, not 1%. Declined: re-deriving the rule now. Hotel-only calibration would rest on 55
+legitimate dev messages that are themselves near-duplicates of training seeds (#34), too few to set a 1% cap, and
+changing the rule after seeing these results would be choosing thresholds by outcome. The thresholds are reported as
+what they are: a weak, SMS-driven calibration.
 
 ### 15. PINs from `secrets`, stored as salted hashes
 Chosen over: `random.Random(42)` PINs stored in plain text (and `random.Random(case_id)` on rotation). Replaying the
@@ -157,11 +166,13 @@ its key. What the test cannot catch is a tag pointing at the wrong key (review r
 held-out number where it meant the first look), and numbers that were typed rather than tagged; round 1 removed or
 labelled those.
 
-### 24. A red-team corpus separate from both evaluation sets
-Chosen over: fixing what the held-out set missed. After the frozen first look (<!-- num:heldout_first_look_caught -->66.7%<!-- /num -->
-caught), fixes were driven by `tests/adversarial/corpus.py`, written independently. Honest caveat: the held-out misses
-had been seen by then, so the current <!-- num:heldout_caught -->87.9%<!-- /num --> is less blind than the first look, and both
-are always quoted together.
+### 24. A red-team corpus separate from both evaluation sets (corrected)
+The intent was: after the frozen first look (<!-- num:heldout_first_look_caught -->66.7%<!-- /num --> caught), drive fixes
+from `tests/adversarial/corpus.py` instead of from the held-out misses. That is not what happened. Review round 1 (C1)
+showed commit `0575f7c` closed exactly the 13 first-look misses with patterns found only in held-out text, and round 2
+(C11) showed the corpus itself mirrors held-out rows (A05 "Reply YES to keep the booking active" vs h052; A01 reuses
+h020's domain). So the corpus was not written independently of v1, and v1's current
+<!-- num:heldout_caught -->87.9%<!-- /num --> is a tuned number (#28).
 
 ### 25. Judges vouch for links one by one
 Chosen over: passing judges only the worst link score. Found by the new engine tests: "We confirm your reservation.
@@ -171,7 +182,7 @@ domain is still unvouched.
 
 ### 26. Known failures stay in the suite as strict xfails
 Chosen over: weakening or deleting a red-team case the system fails. Red-team A02 (no money or deadline words, fresh
-brand-free domain) is delivered with a warning, not held; the offline judge rules about 0.64 against a 0.65 hold line.
+brand-free domain) is delivered with a warning, not held; the offline judge rules just under the 0.65 hold line.
 Moving the line to pass one case would be tuning on the test; the case stays as `xfail(strict=True)` so the suite
 reports the day it passes.
 
@@ -191,7 +202,8 @@ were driven only by the red-team corpus was wrong for that commit.
 ### 29. Held-out v2, written by someone who never saw the code
 Chosen over: writing a second set ourselves. An agent with no access to the repository wrote 148 messages (74 scams,
 74 legitimate, 14 languages, 26 legitimate payment messages, 7 guest-to-hotel) from cited reports
-(`data/curated/HELDOUT_V2_SOURCES.md`). It was committed (`a0ef0f5`) before StayGuard ever scored it, is run only with
+(`data/curated/HELDOUT_V2_SOURCES.md`). Its brief is reproduced verbatim in `docs/HELDOUT_V2_BRIEF.md`, including how it was aimed at round-1 weak spots, which
+makes v2 harder than a random sample rather than neutral. It was committed (`a0ef0f5`) before StayGuard ever scored it, is run only with
 `--heldout-v2`, and its first run is frozen in `eval/heldout_v2_first_look.json`; the README quotes only that run.
 
 ### 30. SMS duplicates removed before splitting
@@ -220,8 +232,18 @@ blind instead of asserted.
 Every confirmed finding from review rounds is fixed with a regression test (`tests/test_review_round*.py`) or declined
 here with a reason; the full record is `docs/ADVERSARIAL_REVIEW.md`. Declined in round 1: a precision-at-prevalence
 figure (C5) — we have no sourced prevalence for hijack scams among hotel messages, and an assumed one would be a
-fabricated metric; a significance test between systems (C5) — with 66 scams the 95% intervals already overlap, which
-the README states in words.
+fabricated metric. Round 1's second decline (no significance test, "the intervals overlap") was wrong: round 2 (C1)
+showed overlapping intervals are not a test for paired outcomes, and an exact McNemar test on the only blind v1 run
+found the full pipeline caught significantly fewer scams than its own classifier would have (details in
+`docs/ADVERSARIAL_REVIEW.md`). The report now includes paired McNemar tests for every set.
+
+### 34. Dev numbers are inflated twice over
+Round 2 (C9) found 5 dev messages at ≥0.80 similarity to a training seed and 26 at ≥0.60 (names, numbers and links
+masked), so "the golden set is never used for training" is only true of exact rows. The dev set is also part of the
+calibration set. Both inflate dev results, which were already known to be optimistic (#13). Held-out v1 had no such
+overlap (0 at ≥0.80). Also in round 2: a new `pix` payment pattern held one personal SMS in the SMS test split ("naughty
+pix"), and was narrowed to require payment context. That narrowing was motivated by a test-split result, which we
+record here rather than hide.
 
 ## Known limits
 - Dev and held-out v1 have the same author as the rules, and v1 was tuned on after its first run (#28). Held-out v2

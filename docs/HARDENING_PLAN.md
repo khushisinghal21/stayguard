@@ -167,7 +167,7 @@ patterns that occur only in the held-out set, so held-out v1 is no longer blind;
 | 23 | Unit tests | Done | `tests/test_signals.py`, `test_links.py`, `test_engine.py`, `test_judges.py`, `test_session_db_config.py` |
 | 24 | Integration tests | Done | `tests/test_api.py` (every endpoint, both modes), `tests/test_service_integration.py` (fault injection, containment, guest check, concurrency, SQLite stress, eval-schema vs console) |
 | 25 | Red-team suite | Done, one known failure | `tests/adversarial/test_redteam.py`; A02 is a strict xfail (DECISIONS #26) |
-| 26 | Coverage gates | Met | 389 passed + 1 xfail in ~30 s offline; 98.4% overall; engine 99.6%, signals 98.3%, links 98.9% |
+| 26 | Coverage gates | Met | at the Phase 3 commit `b33d287`; current counts are in the final summary, CI enforces the gates |
 
 **Found while doing Phase 3:** a legitimate "We confirm your reservation. Directions: <maps link>" was held (DECISIONS
 #25). Fixed in `b33d287`. The `code-review` and `security-review` skills named in the brief are not available in this
@@ -177,5 +177,6 @@ environment; Phase 5's three hostile review agents stand in for them.
 
 Report regenerated from a full run (`eval/report.json`); README and DECISIONS numbers rendered from it, including the
 thresholds, which were hand-typed in the README diagram before. The README results table now shows the frozen first
-blind held-out run (66.7% caught) next to the current, less blind number (86.4%). DECISIONS #15–#27 record every
+blind held-out run (66.7% caught) next to the current number (86.4% at that commit; review round 1 later showed it was
+tuned on, DECISIONS #28). DECISIONS #15–#27 record every
 Phase 1–3 decision.

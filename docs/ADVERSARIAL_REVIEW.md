@@ -97,3 +97,80 @@ A's untested suspicions (not counted by A):
 
 Full suite green (count in the final summary), ruff and mypy clean, `python -m eval.evaluate` re-run: see
 `eval/report.json` at the round-1 docs commit.
+
+---
+
+## Round 2 (reviewed `531d054`; fixes in `052e66b`, `d98608d` and the round-2 docs commit)
+
+Fresh agents, told only what round 1 changed. Reported CONFIRMED: A 10, B 2, C 13; plus SPECULATIVE items listed
+below. Reviewer A noticed uncommitted edits appearing in the working tree mid-review (they were ours: we had started
+on B's report) and re-ran every probe against an export of `531d054`, so its findings are against the reviewed
+commit. We reproduced every A and B finding with a regression test in `tests/test_review_round2.py` and ran that file
+against `531d054`: every finding's tests fail there (the "plus reply here" variant of A1 was already delivered with a
+warning at `531d054`, not clean, and is kept as a guard). A1 and B1 are the same defect.
+
+### A — Staff engineer
+
+| # | Where | Sev | Scenario (as reported) | Verdict | What we did |
+|---|---|---|---|---|---|
+| A1 | `signals.py:524-527, 742-746` | CRITICAL | Round-1 B1 fix incomplete: reassurance and ask joined by "and"/"so"/"just" stay one clause and are dropped together. "You pay at the hotel and the deposit of 50 EUR is sent via UPI to …" → deliver; with judges down "…so please send your card number and CVV here" → `DEGRADED_WARN`. Reviewer's point: any list of joining words leaves gaps. | CONFIRMED | Three layers, because the reviewer is right that a word list alone leaves gaps: (1) clauses also split on connectives in several languages; (2) an instruction verb after the reassurance in the same clause is still read, unless it is the reassurance's own object ("never ask you to send…"); (3) any card or payment-rail mention set aside only because of a reassurance never takes the quiet fast path, so the worst case is the judges, or a warning when they are down. `test_a_reassurance_never_delivers_a_card_or_rail_mention_clean` (judges up and down). Residual: with the judges down such a message is warned, not held. |
+| A2 | `domains.py:47-58` | HIGH | `https://keyroom-lisboa.xyz\@www.booking.com/k`: Python reads host booking.com, browsers (WHATWG) go to keyroom-lisboa.xyz. Delivered via the API as "official". Whether chat apps link the backslash form is unverified. | CONFIRMED | Backslashes become `/` before parsing, as browsers do. `test_backslash_userinfo_url_is_checked_as_the_host_a_browser_visits` |
+| A3 | `links.py:245-260, 290-291` | HIGH | Round-1 B6 fix incomplete: greedy embedded-URL regex merged nested redirects; targets' own targets never checked; only the first three checked. | CONFIRMED (code level; exploit needs an open redirector) | Non-greedy split at each embedded scheme, breadth-first over nested targets (bounded at 20), repeated percent-decoding (also covers B's speculative double-encoding note). `test_every_nested_or_extra_redirect_target_is_checked` |
+| A4 | `links.py:409-416`, `engine.py:303` | HIGH | Round-1 A2/B2 fix incomplete: popular free hosts (github.io, blogspot.com) scored 0.25 "safe"; `FREE_SITE_BUILDER` wasn't an unvouched kind; script.google.com, `*.web.core.windows.net`, bing.com/ck redirects missing. | CONFIRMED | Any hosted, user-content or redirector link scores at least 0.3 (never "safe"); `FREE_SITE_BUILDER`, `POPULAR_PLATFORM_SUBDOMAIN` and `OPEN_REDIRECTOR` are unvouched; more hosts and encoded redirectors listed. `test_free_hosts_and_encoded_redirectors_are_never_safe` |
+| A5 | `judges.py:321-327`, `engine.py:363-386`, `api.py:221` | HIGH | Message content could provoke unparseable judge replies (e.g. truncated JSON on a long message) that count as provider failures; three open the shared breaker for every tenant; public `/healthz` showed when. | SPECULATIVE (shown with a stub provider; no API key to test a real model) | Fixed anyway because the fix is cheap and strictly safer: reply-text problems raise `JudgeReplyUnusable`, which holds that one message (`JUDGE_REPLY_UNUSABLE`) and never touches the breaker; transport failures still do. Judge input capped at 4,000 characters, `max_tokens` raised to 600; breaker state removed from public `/healthz` (still in internal `/v1/metrics`). `test_unusable_judge_reply_holds_the_message_and_leaves_the_breaker_alone`, `test_public_health_check_does_not_reveal_the_breaker`. This makes CLAUDE.md invariant 3 stricter (malformed reply text now holds instead of degrading). |
+| A6 | `engine.py:304-306` | MED | Fullwidth "Ｃｏｍｐｌｅｔｅ online check-in here: <fresh link>" → delivered clean; ASCII version warned. | CONFIRMED | Instruction check on the NFKC form; fullwidth Latin letters flag obfuscation. `test_fullwidth_instruction_is_not_delivered_clean` |
+| A7 | `signals.py:464, 505-507` | MED | Round-1 B4 fix incomplete: `4111/1111/…`, `_`, `,` separators and digits glued to letters escaped card masking; e-mails in link paths/queries were left unmasked by the round-1 userinfo fix. Reached the append-only audit log. | CONFIRMED | Card regex accepts any single separator and uses digit look-arounds (Luhn still required); e-mails are kept only inside a link's authority (userinfo), masked in path and query. `test_card_numbers_with_any_separator_are_masked`, `test_emails_in_link_paths_are_masked_but_userinfo_hosts_are_kept`. Residual: rows already written to an audit log before this fix can't be purged; this repo's committed data has none. |
+| A8 | `db.py:364-384` | MED | Since round 1 anchors every row inside the transaction, `audit_verify` under concurrent writes reported tampering 50/50 times. | CONFIRMED | Anchor written after commit; verification reads the anchor file before the chain. `test_audit_verify_is_not_fooled_by_concurrent_appends` |
+| A9 | `service.py:133-145` | LOW | Containment committing between the flag read and the session insert left a new session active and normal. | CONFIRMED (injected interleaving) | Flag read inside the insert transaction. `test_containment_flag_is_read_inside_the_session_insert_transaction` (structural plus behavioural; the exact interleaving can't be forced portably). |
+| A10 | `judges.py:109-124` | LOW | Carried-over suspicion confirmed: a call that started while closed could clear the probe slot and admit a second half-open probe. | CONFIRMED | `allow()` returns `"closed"`/`"probe"`/`""`; only the probe frees the slot. `test_only_the_probe_can_free_the_probe_slot` |
+| A11 | `judges.py:150-158` | LOW | Round-1 A14 fix incomplete: overlapping substrings ("hotel", "the hotel", "at the hotel") each counted as evidence. Whether a real LLM does this: SPECULATIVE. | CONFIRMED (code) | Overlapping quotes count once (the longest kept). `test_overlapping_quotes_count_once` |
+
+A also confirmed as fine at `531d054`: the fail-closed wrapper and `_claim`, the `guest_verify` transaction, stored
+terms winning, the validation handler, the bounded token bucket, and no false positives from defanging Japanese or
+Chinese full stops.
+
+### B — Scammer with a hotel extranet
+
+| # | Where | Sev | Scenario (as reported) | Verdict | What we did |
+|---|---|---|---|---|---|
+| B1 | `signals.py:746, 783` | CRITICAL | Same defect as A1. "Your stay is fully paid at the property and we never charge a thing just confirm your card number here so the room stays held" → deliver, no banner; UPI, Pix and bank-transfer variants too. | CONFIRMED | Fixed with A1. Pix was not a payment rail at all: added Pix, Revolut, Wise, Zelle, Venmo, Cash App, Skrill, Bizum, BLIK, MB Way, Alipay, WeChat Pay, PayPal, Payoneer, SEPA, IBAN, SWIFT/BIC code and others, and amounts in more currencies. `test_reassurance_joined_without_punctuation_cannot_hide_an_ask`, `test_other_payment_rails_are_off_platform_payment` |
+| B2 | `links.py:409-413`, `154-182` | HIGH | Popular platforms anyone can publish on (wordpress.com, script.google.com, medium.com, github.com, codepen.io, tumblr.com) were still vouched as `POPULAR_DOMAIN`; a pre-registration link on `ourlisbonhotel.wordpress.com` was delivered clean. | CONFIRMED | Added to user-content hosts, and structurally: a tenant subdomain of a popular site (anything but `www`, `m`, `maps`, `support` and similar) gets no popularity discount and is unvouched. `test_pages_anyone_can_publish_on_popular_platforms_are_not_vouched`, `test_tenant_link_with_an_instruction_is_never_delivered_clean` |
+
+B's speculative items: a double-encoded redirect target lowered the score but was still warned (now decoded fully,
+covered by A3's test); a base64-encoded target on an official redirector can't be read offline (encoded
+redirectors on popular sites are now `OPEN_REDIRECTOR`; an official Booking redirector with a base64 target remains
+a residual, needs a real redirector to exploit).
+
+Found while fixing B1: `\bswift\b` in the card-data lexicon held "Swift check-in: just show your passport at
+reception" (pre-existing). Narrowed to "SWIFT/BIC code". `test_reassurances_and_mentions_are_still_not_holds`
+
+### C — Skeptical judge
+
+| # | Where | Sev | Claim → evidence (as reported) | Verdict | What we did |
+|---|---|---|---|---|---|
+| C1 | README:82-87, DECISIONS #33 | HIGH | "No large gain over the model" understates: on v1's only blind run the full pipeline caught 44/66 vs a reconstructed first-look-era classifier's 58/66; the pipeline caught 0 the classifier missed, the classifier 14 the pipeline missed; exact McNemar p = 0.00012 (today: 58 vs 56, p = 0.73). Overlapping intervals are not a paired test. | CONFIRMED (the 44 is from the frozen first look; the 58 is the reviewer's reconstruction of the old classifier and is quoted from the review, not from our report) | README caveat 2 and DECISIONS #33 rewritten; the report now has exact McNemar tests for every set, rendered in the README. Round 1's "intervals overlap" decline is withdrawn. |
+| C2 | README:79-81, 111-112, DECISIONS #29 | HIGH | Docs said v2 had been run and was quoted; it hadn't. | CONFIRMED | The README v2 rows only render once the frozen v2 run exists; wording says it is run once, at the final evaluation. It is run once, after the last review round. |
+| C3 | DECISIONS #14 | MED-HIGH | The reason given for MODEL_LOW moving to 0.03 was false: a 2×2 of model × split shows the split, not the model, moved it (0.03 to 0.28). | CONFIRMED | #14 corrected. |
+| C4 | `eval/calibrate.py`, README:95-96 | MED-HIGH | The calibration rule doesn't deliver its guarantee on hotel messages: LOW fixed by two SMS texts; ~9% of hotel dev legit above HIGH. | CONFIRMED | Documented in README caveat 6 and #14. **Declined:** changing the rule now (55 hotel legit rows, themselves near-duplicates of seeds, can't set a 1% cap; changing it after seeing results is choosing by outcome). |
+| C5 | `eval/evaluate.py:643-646, 774` | MED | v2 crashes would count as catches; `--fast --heldout-v2` could peek without freezing; no schema check (missing `terms` → "unknown" disables the payment rule). | CONFIRMED (schema risk SPECULATIVE) | v2 crash count in the headline and README; `--fast --heldout-v2` refused; rows validated (metadata only) before the run. Tests in `test_review_round2.py`. |
+| C6 | `render_docs.py:60`, `evaluate.py:154-158` | MED | "Legitimate payment messages handled correctly" counts warned messages as correct. | CONFIRMED | Held / warned / delivered-clean reported per category; the v2 legit-payment row shows all three. Fixed before the blind run. |
+| C7 | README:181-182, DECISIONS #2 | MED | Still called the SMS mix "realistic"; "the model settles most of the rest" is false (judges settle more on hotel messages). | CONFIRMED | Both corrected. |
+| C8 | README:71 | MED | The p95 headline can't hold for hotel traffic with real judges (14.5% judged). | CONFIRMED (arithmetic) | Latency row relabelled: offline judge, SMS-heavy mix, with the estimated effect of a hosted LLM stated. |
+| C9 | `classifier.py:12`, `calibrate.py:35-42` | MED-LOW | Dev near-duplicates training seeds (5 at ≥0.80, 26 at ≥0.60) and is used in calibration. v1 is clean. | CONFIRMED | DECISIONS #34; README dev row says so. |
+| C10 | report.md:102-113, README:61 | LOW-MED | Mutation rows partly measure nothing: `zero_width` is a no-op after normalisation; unchanged scams sit in the denominators; F is on the tuned v1 set without a label. | CONFIRMED | Changed-only rates and counts reported; zero-width row explained; rows labelled "not blind". |
+| C11 | DECISIONS #24 | LOW | #24 still claimed fixes were driven by an independent corpus; the corpus mirrors held-out rows. | CONFIRMED | #24 rewritten as a correction. |
+| C12 | HARDENING_PLAN:170,180; DECISIONS #9,#26,#29; README:34 | LOW | Typed numbers: 86.4%, "389 passed", "82% … 100%", "about 0.64", v2 composition, "178 countries" (177 plus missing). | CONFIRMED | Fixed or labelled; v2 composition re-counted from metadata only (148 rows, 74/74, 14 languages, 26 legit_payment, 7 guest→hotel); countries 177 with 488 rows missing. |
+| C13 | report.md:11 | LOW | The generated report still described v1 as "built from cited public scam reports". | CONFIRMED | `to_md` now states the composition and that v1 is not blind. |
+| C14 | DECISIONS #29 | LOW | v2 independence asserted, not evidenced; same model family; brief may target v1 gaps. | SPECULATIVE | Accepted as a disclosure: the brief is now `docs/HELDOUT_V2_BRIEF.md`; it did ask for some round-1 weak spots, so v2 is harder than random and not a neutral rate estimate. |
+
+C also resolved round 1's open price question: the reviewer checked the live pricing page and the configured Haiku 5.5
+price ($0.10 / $0.50 per MTok) is correct.
+
+### Round-2 side effects
+
+- A new `pix` pattern held one personal SMS ("naughty pix") in the SMS test split; narrowed to require payment
+  context. Motivated by a test-split result, recorded in DECISIONS #34.
+- In-process latency rose (p50 about 2.3 → 3.4 ms on this machine) from the extra link and clause work; latency on
+  this shared machine also varies run to run (reviewer C measured 3.2 ms on the unchanged round-1 code).
+- Random feed hosts flagged with the blocklist off (C2) rose from 3.8% to 4.9% and unseen legit domains flagged from
+  0.006% to 0.007%, from the tenant-subdomain and hosted-link rules.
