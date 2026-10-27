@@ -139,9 +139,12 @@ Updated as each item lands — see the bottom of this file.
 Claude Haiku 5.5 price). Replaced with an estimate from the published price and the real prompt length, labelled as an
 estimate everywhere.
 
-**First held-out result (blind):** 66.7% of scams caught, 1.7% of legitimate messages held (dev: 100% / 0%). 16 of the
-22 misses were delivered by the "no payment ask" fast path. Not fixed here: Phase 3's adversarial corpus covers the
+**First held-out result (blind):** 66.7% of scams caught, 1.7% of legitimate messages held (dev: 100% / 0%). 18 of the
+22 misses were delivered by the "no payment ask" fast path (this line said 16 until review round 1 recounted from
+`eval/heldout_first_look.json`). Not fixed here: Phase 3's adversarial corpus covers the
 same attack classes independently, and any fix it drives will be reported against the frozen first look.
+*Correction (review round 1, C1):* the later fix commit `0575f7c` did close exactly the 13 first-look misses with
+patterns that occur only in the held-out set, so held-out v1 is no longer blind; see DECISIONS #28.
 
 ### Phase 2 status
 

@@ -3,17 +3,21 @@
 Short records of the choices that shape StayGuard, and what we'd change for production.
 
 ### 1. Booking payment terms are the strongest signal
-87.6% of the 119,390 real bookings are "No Deposit" (paid at the hotel). For those, *nothing* is due before arrival,
-so a payment demand is wrong regardless of language, link or wording. This one rule catches no-link scams, new
+On a booking whose terms say nothing is due before arrival, a payment demand is wrong regardless of language, link or
+wording. How many bookings that covers is platform data we do not have: in the public dataset we use (119,390
+bookings at two Portuguese hotels, 2015-17, 82% sold through agents), 87.6% are "No Deposit", which is not the same
+thing as "pay at the hotel" on Booking.com (corrected in review round 1, C4). This one rule catches no-link scams, new
 domains and languages the model has never seen, and it is fully explainable. The rule only fires on a real *ask*
 (payment words + an instruction + a link/deadline/goal), never on mentions such as "parking is 15 EUR, payable
 at the desk" or "you pay the driver directly".
 
 ### 2. Rules first, model second, LLM last
-Rules settle almost all of a realistic mix in a few milliseconds (p50 <!-- num:p50_ms -->2.0 ms<!-- /num -->). The model
-settles most of the rest. The judges see only what's left (<!-- num:judge_share -->0.7%<!-- /num --> of the mix), which keeps
-the **estimated** LLM cost at <!-- num:est_cost_per_1000 -->$0.0014<!-- /num --> per 1,000 messages instead of
-<!-- num:est_cost_per_1000_all_llm -->$0.1988<!-- /num --> if every message went to the judges (published Claude Haiku 5.5 price,
+Rules settle almost all of a realistic mix in a few milliseconds (p50 <!-- num:p50_ms -->2.3 ms<!-- /num -->). The model
+settles most of the rest. The judges see only what's left (<!-- num:judge_share -->0.8%<!-- /num --> of the SMS-heavy mix, but
+<!-- num:hotel_judge_share -->14.5%<!-- /num --> of the hotel messages in held-out v1, about
+<!-- num:hotel_est_cost_per_1000 -->$0.0284<!-- /num --> per 1,000 there), which keeps
+the **estimated** LLM cost at <!-- num:est_cost_per_1000 -->$0.0016<!-- /num --> per 1,000 messages instead of
+<!-- num:est_cost_per_1000_all_llm -->$0.1925<!-- /num --> if every message went to the judges (published Claude Haiku 5.5 price,
 estimated token counts — an estimate, not a bill). An LLM-first design would also make an attacker's prompt
 injection part of every decision.
 
@@ -25,8 +29,9 @@ looser only where no hard rule fired — they can never release a message a rule
 
 ### 4. Fail safe, not fail open
 LLM timeout 3 s, circuit breaker after 3 failures. While it's open: normal login → deliver with a guest warning;
-risky login → hold. On the held-out set, StayGuard catches <!-- num:heldout_degraded_caught -->74.2%<!-- /num --> of scams with the
-judges down, against <!-- num:heldout_caught -->86.4%<!-- /num --> with them up.
+risky login → hold. On the held-out set, StayGuard catches <!-- num:heldout_degraded_caught -->72.7%<!-- /num --> of scams with the
+judges down, against <!-- num:heldout_caught -->87.9%<!-- /num --> with them up. Neither number is blind: the offline judge
+and the rules were edited after held-out v1 had been read (#28).
 
 ### 5. Login risk changes the decision, not just a dashboard
 A critical session (stolen cookie replay, impossible travel, payout change from a new device) holds every outgoing
@@ -48,9 +53,11 @@ The first version flagged airbnb.es, expedia.co.in, brookings.edu and Japanese I
 99,967 real legit domains outside the top 10k: brand-owned country domains are allowed, fuzzy typosquat matches
 need a second signal, a brand word counts only when it stands alone ("booking-checkin.com", not
 "trybooking.com"), and punycode counts only when one label mixes Latin with Cyrillic/Greek. False positives
-went from 0.15% to 0.01% on the ranges we tuned on; on 100k never-examined domains (ranks 110k–210k) the rate is
-<!-- num:c3_heldout_fp -->0.006%<!-- /num -->. The heuristics are travel-specific (3% on generic phishing); the blocklist covers
-everything else.
+fell by about an order of magnitude on the ranges we tuned on (figures from that tuning session, not reproducible from
+the current report); on 100k never-examined domains (ranks 110k–210k) the rate is
+<!-- num:c3_heldout_fp -->0.006%<!-- /num -->, but <!-- num:c3_heldout_brand_fp -->8.2%<!-- /num --> for the
+<!-- num:c3_heldout_brand_n -->49<!-- /num --> of them that contain a travel-brand word. The heuristics are travel-specific
+(<!-- num:c2_heldout -->3.8%<!-- /num --> of random feed hosts caught with the blocklist off); the blocklist covers everything else.
 
 ### 9. Honest evaluation over impressive numbers
 The first zero-day test reported 100%, but it selected domains containing "booking", which is the heuristic's own
@@ -66,7 +73,9 @@ any past decision can be explained later.
 
 ### 11. Guest check needs a PIN
 Attackers already know names and dates, so a reservation number alone would let them test their own messages
-against the checker. A PIN, with a lockout after 5 wrong tries per booking and 20 per client, prevents that, and
+against the checker. A PIN, with a lockout after 5 wrong tries per client per booking, 20 per client and 50 per booking
+from all clients (not 5 per booking: anyone could lock the real guest out, review round 1, A12), plus 10 successful
+checks per booking per day (so a guessed PIN is not an unlimited oracle, B5), prevents that, and
 containment rotates the PIN of every guest whose booking the attacker's session opened or messaged (#21).
 
 ### 12. SQLite in the demo, Postgres in production
@@ -78,15 +87,18 @@ and a contextual bandit to tune thresholds per market.
 Chosen over: keep reporting the golden set. The golden set was written next to the rules and every miss on it was
 fixed, so its 100% says little. The new held-out set (124 messages, `data/curated/HELDOUT_SOURCES.md`) is built from
 cited public reports and hotel templates and was committed before StayGuard ever scored it. Its first blind result —
-<!-- num:heldout_caught -->86.4%<!-- /num --> of scams caught — is frozen in `eval/heldout_first_look.json`. That is far below
+<!-- num:heldout_first_look_caught -->66.7%<!-- /num --> of scams caught — is frozen in `eval/heldout_first_look.json`
+(this line quoted the current, non-blind number until review round 1, C3). That is far below
 dev, and it is the number to quote. Most misses went through the "no payment ask" fast path: lexicon gaps (French,
 German, Polish, Russian card checks; "reply YES"; QR codes; spelled-out phone numbers) turned straight into deliveries.
 
 ### 14. Thresholds from a calibration split
 Chosen over: hand-set 0.10 / 0.90. `eval/calibrate.py` picks MODEL_LOW/MODEL_HIGH on the SMS calibration split plus the
-dev set by a rule fixed in advance (≤1% of calibration scams below LOW; ≤1% of calibration legit above HIGH). The
-result (0.26 / 0.46) is much narrower than the hand-set band, so the model now settles more messages on its own and
-fewer reach the judges.
+dev set by a rule fixed in advance (≤1% of calibration scams below LOW; ≤1% of calibration legit above HIGH). The first
+result (0.26 / 0.46, `eval/calibration.json` at commit `ec2348b`) was much narrower than the hand-set band. After
+round 1 removed duplicate SMS texts (#30) the same rule gives LOW <!-- num:model_low -->0.03<!-- /num --> / HIGH
+<!-- num:model_high -->0.52<!-- /num -->: the de-duplicated model is less sure of some scams, so the rule widens the band
+and more messages reach the judges. We kept the rule rather than pick numbers we liked.
 
 ### 15. PINs from `secrets`, stored as salted hashes
 Chosen over: `random.Random(42)` PINs stored in plain text (and `random.Random(case_id)` on rotation). Replaying the
@@ -104,7 +116,10 @@ Fail-closed beats convenient: a forgotten key now breaks the integration loudly 
 ### 17. Idempotency keys are bound to the payload
 Chosen over: replaying the stored decision for any reused `message_id`. Reproduced: "Breakfast is from 7" delivered
 under key `k1`, then a bank-transfer demand under `k1` also came back `deliver`. The key now carries a SHA-256 of
-(text, reservation, session, direction); a different payload gets 409 and an audit row.
+(text, reservation, session, direction, and since review round 1 the payment terms and property); a different payload
+gets 409 and an audit row. Round 1 (A8) also showed two concurrent requests with one key both got through and the
+second overwrote the first's stored message: the key is now claimed inside one write transaction before any work, a
+concurrent duplicate gets a retryable 409, and stored messages are never replaced.
 
 ### 18. Only provider failures count as "judges unavailable"
 Chosen over: `except Exception` around the judge call. A `KeyError` in judge code became `DEGRADED_WARN` (delivered)
@@ -131,17 +146,21 @@ reports any unattributed reads for manual review.
 ### 22. PII masked at rest; audit chain anchored
 Chosen over: storing raw message text (a card number came back from `/v1/messages`). Stored text is masked; raw text
 only with `STAYGUARD_RETAIN_RAW=1`, purged after the retention period. The audit head is appended to a separate anchor
-file every N rows; a forger who rewrites the whole chain consistently is caught by the anchors (tested). Remaining
+file inside the same transaction as each row (every row by default since round 1, A15: anchoring every N rows let
+the last rows be deleted unnoticed, and a missing anchor file was not reported); a forger who rewrites the whole chain consistently is caught by the anchors (tested). Remaining
 limit: someone who can rewrite both files can still forge; production needs a write-once external log.
 
 ### 23. Numbers in docs are rendered, never typed
 Chosen over: hand-copied figures, which had drifted (README latency, "99.8% of normal traffic", the thresholds).
-README and DECISIONS numbers are rendered from `eval/report.json`; a test fails if they differ.
+README and DECISIONS numbers are rendered from `eval/report.json`; a test fails if a rendered number differs from
+its key. What the test cannot catch is a tag pointing at the wrong key (review round 1 found #13 quoting the current
+held-out number where it meant the first look), and numbers that were typed rather than tagged; round 1 removed or
+labelled those.
 
 ### 24. A red-team corpus separate from both evaluation sets
 Chosen over: fixing what the held-out set missed. After the frozen first look (<!-- num:heldout_first_look_caught -->66.7%<!-- /num -->
 caught), fixes were driven by `tests/adversarial/corpus.py`, written independently. Honest caveat: the held-out misses
-had been seen by then, so the current <!-- num:heldout_caught -->86.4%<!-- /num --> is less blind than the first look, and both
+had been seen by then, so the current <!-- num:heldout_caught -->87.9%<!-- /num --> is less blind than the first look, and both
 are always quoted together.
 
 ### 25. Judges vouch for links one by one
@@ -158,13 +177,59 @@ reports the day it passes.
 
 ### 27. Tests run offline on a fixture snapshot
 Chosen over: tests that read `data/raw` or the network. `tests/fixtures/raw` is a small, fixed slice of the real
-datasets; the suite (390 tests, 98% line coverage, ≥95% on engine/signals/links) runs in about 30 s with no key and
-no network, and CI enforces the coverage gates.
+datasets; the suite runs in well under the two-minute budget with no key and no network, and CI enforces the coverage gates
+(≥85% overall, ≥95% on engine, signals and links).
+
+### 28. Held-out v1 is no longer blind, and we say so
+Review round 1 (C1) found that commit `0575f7c`, described as driven by the red-team corpus, closed exactly the 13
+held-out first-look misses with patterns that appear only in the held-out set (`skip review`, `pre-approved by`,
+`respond that this text is`, `potwierd`). Chosen over: reverting those patterns (they are real scam wording and make
+the product safer) or quietly keeping the v1 number as the headline. v1's current figure is now labelled "not blind"
+everywhere, its frozen first look stays the only blind v1 number, and #29 adds a new blind set. #24's claim that fixes
+were driven only by the red-team corpus was wrong for that commit.
+
+### 29. Held-out v2, written by someone who never saw the code
+Chosen over: writing a second set ourselves. An agent with no access to the repository wrote 148 messages (74 scams,
+74 legitimate, 14 languages, 26 legitimate payment messages, 7 guest-to-hotel) from cited reports
+(`data/curated/HELDOUT_V2_SOURCES.md`). It was committed (`a0ef0f5`) before StayGuard ever scored it, is run only with
+`--heldout-v2`, and its first run is frozen in `eval/heldout_v2_first_look.json`; the README quotes only that run.
+
+### 30. SMS duplicates removed before splitting
+Chosen over: the raw corpus split. The SMS corpus repeats texts (403 duplicate rows); 97 test-split ham and 28 test-split
+spam texts were also in the training split, so test metrics were inflated (round 1, C9). Splits are now made after
+dropping exact duplicates. Side effects, kept and recorded rather than tuned away: recalibration widened the model band
+(#14); on held-out v1 the share of legitimate messages delivered with a warning rose from 1.7% (report at `ec2348b`) to
+<!-- num:heldout_legit_warned -->3.5%<!-- /num --> (false holds unchanged); "Photos of the room: `<unknown .xyz link>`" is
+now held instead of warned, and "we never ask for card details by chat" is now warned instead of delivered (both
+pinned in `tests/test_engine.py`).
+
+### 31. A classifier-only baseline in every table
+Chosen over: comparing only against a generic spam filter and a blocklist, which are weak baselines by construction
+(round 1, C2 and C8). On held-out v1 the classifier alone caught <!-- num:heldout_classifier_only_caught -->84.9%<!-- /num -->,
+close to the full pipeline. The blocklist row is labelled uninformative because <!-- num:heldout_blocklist_urls_listed -->0<!-- /num -->
+of the set's <!-- num:heldout_blocklist_urls -->35<!-- /num --> URLs are in the feeds.
+
+### 32. Genuine pre-arrival payment requests stay held
+Round 1 (C4) showed the evaluation sets had almost no legitimate payment requests, and a probe of 12 genuine ones (a
+group pro-forma, a damage deposit, city tax in advance) held half of them. Chosen over: loosening the payment-terms rule
+(invariant 2). A hotel that needs money before arrival on a no-deposit booking is asked to use the platform's payment
+flow; StayGuard tells it so. Held-out v2 has 26 legitimate payment messages so the cost of this choice is measured
+blind instead of asserted.
+
+### 33. Fixes from the adversarial review, and what we declined
+Every confirmed finding from review rounds is fixed with a regression test (`tests/test_review_round*.py`) or declined
+here with a reason; the full record is `docs/ADVERSARIAL_REVIEW.md`. Declined in round 1: a precision-at-prevalence
+figure (C5) — we have no sourced prevalence for hijack scams among hotel messages, and an assumed one would be a
+fabricated metric; a significance test between systems (C5) — with 66 scams the 95% intervals already overlap, which
+the README states in words.
 
 ## Known limits
-- Both message sets have the same author as the rules. The held-out set cites outside wording and its first look is
-  frozen, which reduces the bias but does not remove it. Real validation needs labelled platform traffic.
-- Login data is synthetic, and separable by construction.
+- Dev and held-out v1 have the same author as the rules, and v1 was tuned on after its first run (#28). Held-out v2
+  has a different author but is still small (148) and written, not collected. Real validation needs labelled
+  platform traffic.
+- Login data is synthetic, and its attacks are generated from the features the model scores, so its detection is
+  true by construction.
+- Genuine pre-arrival payment requests on no-deposit bookings are held by design (#32).
 - Every reported number used the offline deterministic judge; real LLM judges are unmeasured.
 - The link layer can't see where shorteners lead without network access (they get a warning, not a pass).
 - Lexicon-free lures on fresh brand-free domains can be delivered with a warning (#26).

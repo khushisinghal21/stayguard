@@ -25,7 +25,7 @@ reduces the bias but cannot remove it. Real validation needs labelled platform t
 | S6 | Euronews, "Fake listings and phishing emails", 23 Dec 2025: https://www.euronews.com/2025/12/23/fake-listings-and-phishing-emails-how-travellers-have-lost-hundreds-to-bookingcom-scams |
 | S7 | Phixo, "Fake Booking.com email": https://phixo.app/fake-booking-confirmation-email |
 | S8 | Akamai, "Unmasking a sophisticated phishing campaign that targets hotel guests", 21 Sep 2023: https://www.akamai.com/blog/security-research/sophisticated-phishing-campaign-targeting-hospitality |
-| S9 | Bitdefender, "How hackers hijack hotel accounts on Booking.com" (the article in this project's history) |
+| S9 | Bitdefender, "How hackers hijack hotel accounts on Booking.com" (the article in this project's history; no URL is recorded here, so these 10 rows are not independently checkable — review round 1, C13) |
 | S10 | TechRadar, "Booking.com phishing scam uses secret characters", 15 Aug 2025: https://www.techradar.com/pro/security/booking-com-phishing-scam-uses-secret-characters-to-trick-victims-last-minute-holiday-hunters-beware |
 | S11 | Malwarebytes, "Credit card thieves target Booking.com customers", Sep 2023 (Perception Point stage 1): https://www.malwarebytes.com/blog/news/2023/09/credit-card-thieves-target-bookingcom-customers |
 | S12 | The Register, "That 'angry guest' email from Booking.com? It's a scam", 13 Mar 2025 (Microsoft, Storm-1865): https://www.theregister.com/2025/03/13/bookingdotcom_phishing_campaign/ |
