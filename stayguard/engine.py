@@ -50,6 +50,7 @@ REASON_TEXT = {
     "JUDGES_UNSURE": "AI judges are split - delivered with a warning.",
     "JUDGES_LEGIT": "AI judges agree it is a normal message.",
     "DEGRADED_WARN": "AI review unavailable - delivered with a warning (normal session).",
+    "REASSURANCE_NEXT_TO_PAYMENT": "A reassurance sits next to payment or card words - delivered with a warning.",
     "JUDGE_REPLY_UNUSABLE": "The AI review could not be completed for this message - held for a human.",
     "DEGRADED_RISKY_SESSION": "AI review unavailable and the sender's session is risky - held.",
     "RISKY_SESSION": "Sender's login looks unusual, so the decision was made one step stricter.",
@@ -344,7 +345,7 @@ class Engine:
         if not rule_decided:
             # A card or payment-rail mention set aside only because a reassurance shared its clause never takes the
             # quiet fast path: the judges decide (review round 2, A1/B1). Worst case with judges down: a warning.
-            if quiet and not reasons and model_p <= config.MODEL_HIGH and not sig.reassured_sensitive:
+            if quiet and not reasons and model_p <= config.MODEL_HIGH and not sig.reassured_sensitive and not sig.phone_handoff:
                 path = "rule"
                 reasons.append("NO_PAYMENT_ASK")
             elif quiet and not reasons:
@@ -352,7 +353,8 @@ class Engine:
                 # lure...). The fast path may not deliver what the model would hold; a model-only hold is too
                 # trigger-happy on ordinary chat, so these go to the judges.
                 ruling_needed = True
-            elif model_p < config.MODEL_LOW and worst < 0.3 and not unknown_link_with_instruction:
+            # a move to a phone call is never waved through on the model alone (review round 3, B2)
+            elif model_p < config.MODEL_LOW and worst < 0.3 and not unknown_link_with_instruction and not sig.phone_handoff:
                 path = "model"
                 escalate("deliver", "MODEL_LOW_RISK")
             elif model_p > config.MODEL_HIGH:
@@ -411,6 +413,11 @@ class Engine:
                     else:
                         escalate("warn", "DEGRADED_WARN")
                     stage("judges", s, provider="unavailable", breaker=self.breaker.state)
+
+        # A payment or card word that was set aside only because a reassurance shared its sentence never goes out
+        # without a banner, whatever the judges say (review round 3, A1/A3: the offline judge cleared such messages).
+        if decision == "deliver" and sig.reassured_sensitive:
+            escalate("warn", "REASSURANCE_NEXT_TO_PAYMENT")
 
         # unverified links never go out silently
         if decision == "deliver" and worst >= 0.3:

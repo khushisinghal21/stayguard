@@ -1,15 +1,19 @@
 """StayGuard evaluation. Run:  python -m eval.evaluate   (writes eval/report.json and eval/report.md)
 
-Every section reports DEV and HELD-OUT separately. Dev data was looked at while building the rules; held-out data
-was not. Headline numbers are held-out.
+Every section reports DEV and HELD-OUT separately. Dev data was looked at while building the rules. Held-out v1 was
+blind only for its first run (frozen in eval/heldout_first_look.json); later fixes targeted its misses. Held-out v2
+is run once with --heldout-v2 and its frozen first run is the only v2 number quoted. The SMS test split is never
+trained on or used for calibration, but rule changes were checked against it (and one was narrowed because of it).
 
 A. Messages. Dev = data/curated/golden_eval.jsonl (115, hand-written alongside the rules). Held-out =
    data/curated/heldout_eval.jsonl (124, built from cited public scam reports and hotel templates, committed
    before its first run). StayGuard vs baselines. The very first held-out run is frozen in
    eval/heldout_first_look.json and never overwritten.
-B. Real false alarms: the SMS test split (never trained on, never used for calibration), pushed through the full
-   pipeline as hotel->guest on a pay-at-property booking. Domain-shifted: these are personal SMS, not hotel chat.
-C. Links nobody has reported yet (blocklist off). Dev = what the heuristics were tuned on; held-out = never seen:
+B. Real false alarms: the SMS test split (never trained on or calibrated on; used as a check during rule work),
+   pushed through the full pipeline as hotel->guest on a pay-at-property booking. Domain-shifted: these are personal
+   SMS, not hotel chat.
+C. Links nobody has reported yet (blocklist off). Dev = what the heuristics were tuned on; held-out = not examined
+   while tuning (flagged examples from it have been printed in reports since 53c502e):
    C1 the other half of the Booking-themed phishing hosts; C2 a disjoint random feed sample; C3 legit domains
    ranked 110,001-210,000 (dev: 10,001-110,000).
 D. Session model (synthetic logins - see stayguard/session_risk.py).
@@ -50,9 +54,10 @@ from stayguard.signals import extract  # noqa: E402
 
 PROPERTY_DOMAINS = ["lisboncityhotel.pt", "algarveresorthotel.pt"]
 FIRST_LOOK = config.EVAL_DIR / "heldout_first_look.json"
-# Held-out v2 was written after review round 1 by an agent with no access to the code, and committed before it was
+# Held-out v2 was written after review round 1 by an agent instructed not to read the code, and committed before it was
 # ever run. Its first run is frozen here; evaluate it with --heldout-v2 only when a final number is wanted.
 FIRST_LOOK_V2 = config.EVAL_DIR / "heldout_v2_first_look.json"
+V2_SHA256 = "4937279fef1be883d5bdbb7b776af04f4f2a04e4c28bc6cc743bc15e45b3109e"  # data/curated/heldout_v2.jsonl at a0ef0f5
 SYSTEM_NAMES = [
     "baseline_blocklist_only",
     "baseline_generic_spam_filter",
@@ -158,6 +163,8 @@ def section_a(rows: list[dict[str, Any]], engine: Engine, engine_nobl: Engine, s
         ds = [eng.check(x["text"], ctx_for(x), record=False) for x in rows]
         eng.breaker.forced_outage = False
         systems[name] = score(y, [d.decision in ("hold", "block") for d in ds], [d.decision == "warn" for d in ds])
+        # every run's crashes are counted, not only the full system's (review round 3, C10)
+        systems[name]["fail_closed"] = sum(d.path == "fail_closed" for d in ds)
         return ds
 
     full = run(engine, "stayguard_full")
@@ -357,6 +364,7 @@ def section_f(rows: list[dict[str, Any]], engine: Engine) -> dict[str, Any]:
         mutated = [_mutate(x["text"], kind, rng) for x in scams]
         ds = [engine.check(m, ctx_for(x), record=False) for m, x in zip(mutated, scams, strict=True)]
         caught = sum(d.decision in ("hold", "block") for d in ds)
+        crashes = sum(d.path == "fail_closed" for d in ds)
         # Review round 2 (C10): a rewrite that leaves a message unchanged (no deadline to strip, no link to swap) still
         # sat in the denominator. Report the rate on the messages the rewrite actually changed, and how many that is.
         # Zero-width characters are stripped by normalise() before any rule, so that row checks the stripping.
@@ -365,6 +373,7 @@ def section_f(rows: list[dict[str, Any]], engine: Engine) -> dict[str, Any]:
         out[kind] = {
             "n": len(scams),
             "n_changed": len(changed),
+            "fail_closed": crashes,
             "catch_rate": round(caught / len(scams), 4) if scams else None,
             "catch_rate_changed_only": round(caught_changed / len(changed), 4) if changed else None,
             "missed_ids": [x["id"] for x, d in zip(scams, ds, strict=True) if d.decision not in ("hold", "block")][:15],
@@ -375,6 +384,15 @@ def section_f(rows: list[dict[str, Any]], engine: Engine) -> dict[str, Any]:
         "n": len(legit),
         "held_rate": round(sum(d.decision in ("hold", "block") for d in lz) / len(legit), 4),
         "warned_rate": round(sum(d.decision == "warn" for d in lz) / len(legit), 4),
+    }
+    # Review round 3 (C1): no evaluation set contained a single emoji, and the variation selector in ❤️ made legitimate
+    # messages "obfuscated". Legit messages with common emoji appended (with selectors and joiners) are now measured.
+    emoji = [" ❤️", " ☀️", " 👍", " 👨‍👩‍👧", " 🏳️‍🌈", " 😊🙏"]
+    le = [engine.check(x["text"] + emoji[i % len(emoji)], ctx_for(x), record=False) for i, x in enumerate(legit)]
+    out["legit_with_emoji"] = {
+        "n": len(legit),
+        "held_rate": round(sum(d.decision in ("hold", "block") for d in le) / len(legit), 4) if legit else None,
+        "warned_rate": round(sum(d.decision == "warn" for d in le) / len(legit), 4) if legit else None,
     }
     return out
 
@@ -465,8 +483,10 @@ def to_md(r: dict[str, Any]) -> str:
         "",
         "**Dev** data was looked at while the rules were built, so dev numbers are optimistic. **Held-out v1** was blind "
         "only for its first run: later fixes were made after its misses were read (review round 1, finding C1), so only "
-        "its frozen first look is a blind number. **Held-out v2** was written afterwards by an agent with no access to "
-        "the code and committed before its first run; its first run is frozen too.",
+        "its frozen first look is a blind number. **Held-out v2** was written afterwards by an agent instructed not to "
+        "read the code (self-reported; same model family), committed before its first run, and run once; its first run "
+        "is frozen. Its text was never seen, but its language mix and brief were known while later rules were written "
+        "(DECISIONS #35).",
         "",
     ]
     if r.get("heldout_v2_first_look"):
@@ -721,14 +741,34 @@ def headline(r: dict[str, Any]) -> dict[str, Any]:
         "sms_ham_held_ci": B["real_ham"]["held_ci95"],
         # A crash fails closed, which counts as a catch. Any non-zero value here means the catch rates are inflated by
         # bugs, not earned (the post-round-1 run had 16 such crashes before the upper-case host fix).
-        "fail_closed_crashes": sum(A[k]["paths"].get("fail_closed", 0) for k in ("dev", "heldout"))
+        "fail_closed_crashes": sum(sy.get("fail_closed", 0) for k in ("dev", "heldout") for sy in A[k]["systems"].values())
+        + sum(v.get("fail_closed", 0) for k in ("dev", "heldout") for v in F[k].values() if isinstance(v, dict))
         + B["real_ham"]["fail_closed"]
         + B["real_spam"]["fail_closed"]
         + E["paths"].get("fail_closed", 0),
+        "legit_emoji_warned_heldout": F["heldout"]["legit_with_emoji"]["warned_rate"],
+        "legit_emoji_held_heldout": F["heldout"]["legit_with_emoji"]["held_rate"],
+        "legit_zero_width_warned_heldout": F["heldout"]["legit_with_zero_width"]["warned_rate"],
+        **reconstruction_headline(),
         "p50_ms": E["p50_ms"],
         "p95_ms": E["p95_ms"],
         "est_cost_per_1000": E["est_cost_per_1000_messages_usd"],
         "est_cost_per_1000_all_llm": E["est_cost_per_1000_if_every_message_went_to_llm_usd"],
+    }
+
+
+def reconstruction_headline() -> dict[str, Any]:
+    """v1's only blind run vs its own classifier, from eval/reconstruct_first_look.py (review rounds 2-3, C1/C11)."""
+    p = config.EVAL_DIR / "first_look_reconstruction.json"
+    if not p.exists():
+        return {}
+    t = json.loads(p.read_text())["thresholds"]["first_look_model_high"]
+    return {
+        "first_look_full_caught_n": t["full_system_caught"],
+        "first_look_classifier_caught_n": t["classifier_alone_caught"],
+        "first_look_only_classifier": t["mcnemar"]["only_second"],
+        "first_look_only_full": t["mcnemar"]["only_first"],
+        "first_look_mcnemar_p": t["mcnemar"]["p_value"],
     }
 
 
@@ -743,6 +783,9 @@ def headline_v2(fl: dict[str, Any]) -> dict[str, Any]:
         "v2_legit_payment_warned": cat.get("legit_payment", {}).get("warned"),
         "v2_legit_payment_clean": cat.get("legit_payment", {}).get("clean"),
         "v2_mcnemar_p": A["paired_tests"]["full_vs_classifier_only_on_scams"]["p_value"],
+        "v2_legit_only_full_held": A["paired_tests"]["full_vs_classifier_only_on_legit_holds"]["only_first"],
+        "v2_legit_only_classifier_held": A["paired_tests"]["full_vs_classifier_only_on_legit_holds"]["only_second"],
+        "v2_legit_mcnemar_p": A["paired_tests"]["full_vs_classifier_only_on_legit_holds"]["p_value"],
         "v2_only_full": A["paired_tests"]["full_vs_classifier_only_on_scams"]["only_first"],
         "v2_only_classifier": A["paired_tests"]["full_vs_classifier_only_on_scams"]["only_second"],
         "v2_n": A["n"],
@@ -815,7 +858,16 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     )
     v2 = None
     if args.heldout_v2:
-        if FIRST_LOOK_V2.exists():
+        if not FIRST_LOOK_V2.exists():
+            # The one blind run must be attributable to committed code and the committed set (review round 3, C3).
+            if (
+                _git("status", "--porcelain", "--untracked-files=no") not in ("", "unknown")
+                or _git("rev-parse", "HEAD") == "unknown"
+            ):
+                raise SystemExit("refusing the blind held-out v2 run: run it from a clean git checkout of the repository")
+            if _sha256(config.DATA_CURATED / "heldout_v2.jsonl") != V2_SHA256:
+                raise SystemExit("refusing: heldout_v2.jsonl differs from the file committed in a0ef0f5")
+        else:
             print("NOTE: held-out v2 already had its blind run; this run is NOT blind and is not quoted")
         v2rows = [x for x in load_rows("heldout_v2.jsonl") if x.get("split") == "heldout_v2"]
         validate_rows(v2rows)
@@ -840,7 +892,9 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         "D_sessions": srep,
         "E_cost_latency": e,
         "F_robustness": f,
-        "A_messages_heldout_v2": v2,
+        # a re-run after the frozen first look is kept apart and labelled, never in the blind slot (round 3, C3)
+        "A_messages_heldout_v2": v2 if not FIRST_LOOK_V2.exists() else None,
+        "A_messages_heldout_v2_rerun_NOT_BLIND": v2 if FIRST_LOOK_V2.exists() else None,
         "heldout_v2_sha256": _sha256(config.DATA_CURATED / "heldout_v2.jsonl") if v2 else None,
         "heldout_v2_commit": _git("log", "-1", "--format=%h", "--", "data/curated/heldout_v2.jsonl") if v2 else None,
         "classifier": crep.as_dict(),

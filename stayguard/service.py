@@ -291,6 +291,15 @@ class Service:
             }
             body = json.dumps(out, ensure_ascii=False)
             with db.tx() as t:
+                # Re-check the session inside the write transaction: a message in flight while containment commits
+                # (the judges can take seconds) was delivered after its session was revoked, outside the case file
+                # (review round 3, A5). Containment's own transaction is serialised with this one.
+                if session_id:
+                    st = t.execute("SELECT status FROM sessions WHERE id=?", (session_id,)).fetchone()
+                    if st and st[0] == "revoked" and out["decision"] in ("deliver", "warn"):
+                        out = {**out, "decision": "block", "reasons": ["SESSION_REVOKED", *out["reasons"]]}
+                        out["explanations"] = ["This session was logged out by containment.", *out.get("explanations", [])]
+                        body = json.dumps(out, ensure_ascii=False)
                 # plain INSERT: a stored decision is never silently replaced
                 t.execute(
                     "INSERT INTO messages (id, created, property_id, reservation_id, session_id, direction, "
@@ -304,8 +313,8 @@ class Service:
                         direction,
                         d.masked_text,
                         text if config.RETAIN_RAW else None,
-                        d.decision,
-                        json.dumps(d.reasons),
+                        out["decision"],
+                        json.dumps(out["reasons"]),
                         d.path,
                         body,
                     ),

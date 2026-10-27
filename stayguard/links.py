@@ -308,7 +308,9 @@ def embedded_targets(url: str) -> list[str]:
         if decoded == rest:
             break
         rest = decoded
-    rest = rest[rest.find("/") :] if "/" in rest else rest
+    # drop a port, then keep everything after the host: a query or fragment straight after the host ("booking.com?u=
+    # https://evil") used to be cut at the "/" inside the embedded scheme, losing the target (review round 3, A7)
+    rest = re.sub(r"^:\d+", "", rest)
     out = EMBEDDED_URL.findall(rest)
     for m in PARAM_VALUE.finditer(rest):
         v = m.group(1)
@@ -495,9 +497,12 @@ class LinkChecker:
                 score = max(score, 0.3)
             # A tenant subdomain of a popular platform (ourhotel.somepopularsite.com) is not the popular site itself: no
             # popularity discount, and it counts as unvouched. Any list of user-content hosts is incomplete (round 2).
-            sub = (ext.subdomain or "").lower()
-            if popular and not hosted and sub and sub.split(".")[0] not in SERVICE_SUBDOMAINS and host not in _top_domains():
-                score += 0.1
+            # Every label is checked, not just the leftmost ("www.tenant.platform.com" kept the discount, round 3 A4), and
+            # two-letter labels are language/country service hosts (pt.tripadvisor.com). A tenant page is never "safe".
+            labels = [x for x in (ext.subdomain or "").lower().split(".") if x]
+            tenant = [x for x in labels if x not in SERVICE_SUBDOMAINS and len(x) != 2]
+            if popular and not hosted and tenant and host not in _top_domains():
+                score = max(score + 0.1, 0.3)
                 reasons.append("POPULAR_PLATFORM_SUBDOMAIN")
             elif popular and not hosted:
                 score -= 0.35

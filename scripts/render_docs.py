@@ -49,7 +49,7 @@ def results_table(h: dict) -> str:
     if h.get("v2_caught") is not None:
         rows += [
             (
-                f"**Held-out v2** (blind; written by an agent with no code access, first run frozen): scams caught "
+                f"**Held-out v2** (blind to its text; author instructed not to read the code; first run frozen): scams caught "
                 f"({f('v2_n_scam')} scams, 95% CI)",
                 f"**{f('v2_caught')}** ({f('v2_caught_ci')})",
             ),
@@ -63,8 +63,17 @@ def results_table(h: dict) -> str:
                 f"{f('v2_legit_payment_held')} / {f('v2_legit_payment_warned')} / {f('v2_legit_payment_clean')}",
             ),
             (
-                "Held-out v2, same messages: StayGuard's classifier alone / generic spam filter / StayGuard with judges down",
-                f"{f('v2_classifier_only_caught')} / {f('v2_spam_filter_caught')} / {f('v2_degraded_caught')} caught",
+                "Held-out v2, same messages, caught: StayGuard's classifier alone / generic spam filter / StayGuard with "
+                "judges down",
+                f"{f('v2_classifier_only_caught')} / {f('v2_spam_filter_caught')} / {f('v2_degraded_caught')}",
+            ),
+            (
+                "Held-out v2: StayGuard's classifier alone wrongly held / spam filter wrongly held",
+                f"{f('v2_classifier_only_false_holds')} / {f('v2_spam_filter_false_holds')}",
+            ),
+            (
+                "Held-out v2 legit messages held only by the full system / only by its classifier (paired McNemar p)",
+                f"{f('v2_legit_only_full_held')} / {f('v2_legit_only_classifier_held')} (p = {f('v2_legit_mcnemar_p')})",
             ),
             (
                 "Held-out v2: scams caught only by the full system / only by its classifier (paired McNemar p)",
@@ -77,6 +86,11 @@ def results_table(h: dict) -> str:
             "Held-out v1 scams caught, first blind run (frozen before any v1 result was seen; 95% CI)",
             f"**{f('heldout_first_look_caught')}** of {f('heldout_n_scam')} ({f('heldout_first_look_caught_ci')}), "
             f"wrongly held {f('heldout_first_look_false_holds')}",
+        ),
+        (
+            "Held-out v1 first blind run vs its own classifier, same 66 scams (`eval/reconstruct_first_look.py`): full "
+            "system caught / classifier alone would have caught (paired McNemar p)",
+            f"{f('first_look_full_caught_n')} / {f('first_look_classifier_caught_n')} (p = {f('first_look_mcnemar_p')})",
         ),
         (
             "Held-out v1 scams caught now (NOT blind: later fixes targeted its first-run misses)",
@@ -99,7 +113,7 @@ def results_table(h: dict) -> str:
             f"{f('heldout_blocklist_urls_listed')} of its {f('heldout_blocklist_urls')} URLs are in the feeds)",
             f("heldout_blocklist_caught"),
         ),
-        ("Held-out v1 scams caught with the AI judges down", f("heldout_degraded_caught")),
+        ("Held-out v1 scams caught with the AI judges down (not blind)", f("heldout_degraded_caught")),
         (
             "Held-out v1 scams caught after rewriting (no deadline + fresh domain + leetspeak), not blind: all / changed only",
             f"{f('robust_combined_heldout')} / {f('robust_combined_heldout_changed')}",
@@ -110,7 +124,8 @@ def results_table(h: dict) -> str:
             f"{f('dev_caught')} / {f('dev_false_holds')}",
         ),
         (
-            f"Real everyday SMS wrongly held ({f('sms_ham_n')} messages, domain-shifted; 95% CI)",
+            f"Real everyday SMS wrongly held ({f('sms_ham_n')} messages, domain-shifted; used as a check during rule work, "
+            "and one rule was narrowed because of it; 95% CI)",
             f"{f('sms_ham_held')} ({f('sms_ham_held_ci')})",
         ),
         (f"Unseen legit domains flagged ({f('c3_heldout_n')} domains, ranks 110k-210k)", f("c3_heldout_fp")),
@@ -129,7 +144,14 @@ def results_table(h: dict) -> str:
             f"{f('judge_share')} / {f('est_cost_per_1000')} "
             f"(vs {f('est_cost_per_1000_all_llm')} if every message went to the judges)",
         ),
-        ("Evaluation messages that crashed and failed closed (counted as caught if non-zero)", f("fail_closed_crashes")),
+        (
+            "Legit held-out v1 messages with a common emoji added (❤️, 👍, 👨‍👩‍👧 …): warned / held",
+            f"{f('legit_emoji_warned_heldout')} / {f('legit_emoji_held_heldout')}",
+        ),
+        (
+            "Evaluation checks that crashed and failed closed, across every run and rewrite (would count as caught)",
+            f("fail_closed_crashes"),
+        ),
         (
             "Latency p50 / p95, in-process with the offline judge on the SMS-heavy mix (a hosted LLM would add an estimated "
             "1-3 s to every judged message, so p95 on hotel messages would be seconds)",

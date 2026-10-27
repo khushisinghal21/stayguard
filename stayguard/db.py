@@ -340,11 +340,12 @@ def audit(kind: str, payload: dict[str, Any]) -> str:
         h = _h(prev, ts, kind, body)
         cur = t.execute("INSERT INTO audit (ts, kind, payload, prev_hash, hash) VALUES (?,?,?,?,?)", (ts, kind, body, prev, h))
         seq = int(cur.lastrowid or 0)
-    # The anchor is written only after the row has committed, and audit_verify reads anchors before the chain, so a
-    # verifier never sees an anchor for a row it can't see yet. Writing it inside the transaction made every
-    # verification under live traffic report tampering (review round 2, A8).
-    if config.AUDIT_ANCHOR_EVERY and seq % config.AUDIT_ANCHOR_EVERY == 0:
-        with _lock:
+        # Anchor inside the write transaction, before commit: if the anchor write fails the row rolls back, so a committed
+        # row always has its anchor (round 3, A9: anchoring after commit could leave an unanchored tail row whose
+        # deletion went unnoticed). A crash between anchor and commit leaves an anchor with no row, which verification
+        # reports loudly: the safe direction. audit_verify re-reads the chain before calling a missing row tampering,
+        # because a writer may be between its anchor and its commit (round 2, A8).
+        if config.AUDIT_ANCHOR_EVERY and seq % config.AUDIT_ANCHOR_EVERY == 0:
             _write_anchor(seq, h)
     return h
 
@@ -385,7 +386,14 @@ def audit_verify() -> dict[str, Any]:
                 continue
             a = json.loads(line)
             anchors += 1
-            if hashes.get(a["seq"]) != a["hash"]:  # also catches rows deleted from the end (seq no longer present)
+            got = hashes.get(a["seq"])
+            for _ in range(20):  # a writer may have anchored and not yet committed: wait briefly for that row
+                if got is not None:
+                    break
+                time.sleep(0.01)
+                row = con().execute("SELECT hash FROM audit WHERE seq=?", (a["seq"],)).fetchone()
+                got = row[0] if row else None
+            if got != a["hash"]:  # also catches rows deleted from the end (seq no longer present)
                 return {"ok": False, "broken_at_seq": a["seq"], "checked": n, "reason": "anchor_mismatch"}
     return {"ok": True, "checked": n, "anchors_checked": anchors, "head": prev}
 

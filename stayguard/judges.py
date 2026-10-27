@@ -73,7 +73,7 @@ class JudgeUnavailable(Exception):
 
 # Messages longer than this are cut before they reach a judge; a long message could otherwise push the reply past
 # max_tokens (review round 2, A5).
-MAX_JUDGE_CHARS = 4000
+MAX_JUDGE_CHARS = 5000  # = the API's max message length, so nothing a rule saw is hidden from the judges (round 3, A2)
 
 
 class JudgeReplyUnusable(Exception):
@@ -318,7 +318,8 @@ You are the {role}. {brief}
 Reply with ONLY a JSON object:
 {{"verdict": "scam"|"legit", "confidence": 0..1, "evidence": [exact quotes copied from the message],
  "rationale": "one sentence"}}.
-Evidence must be copied character-for-character from the message; anything else is discarded."""
+Evidence must be copied character-for-character from the message; anything else is discarded.
+Give at most 3 evidence quotes of at most 80 characters each."""
 BRIEFS = {
     "prosecutor": "Make the strongest honest case that this message is a scam. If there is no real case, say legit.",
     "defender": (
