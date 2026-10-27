@@ -10,3 +10,5 @@ get https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed
 get https://raw.githubusercontent.com/zer0h/top-1000000-domains/master/top-10000-domains top-10000-domains.txt
 get https://raw.githubusercontent.com/zer0h/top-1000000-domains/master/top-1000000-domains top-1m.txt
 wc -l *
+cd ../..
+python3 scripts/make_manifest.py data/raw

@@ -1,0 +1,47 @@
+{
+  "fetched_at": "2026-10-27T06:19:37+0000",
+  "files": [
+    {
+      "file": "hotels.csv",
+      "url": "https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-02-11/hotels.csv",
+      "lines": 119391,
+      "bytes": 16855599,
+      "sha256": "7c2ae42a7353905ea136e5c2287f17c92c5435826598bfbb8491c6f0c7b1fc06"
+    },
+    {
+      "file": "sms.tsv",
+      "url": "https://raw.githubusercontent.com/justmarkham/pycon-2016-tutorial/master/data/sms.tsv",
+      "lines": 5574,
+      "bytes": 477907,
+      "sha256": "7d039a24a6083ed9ef0f806ebad56bbb976e3aeb8de05669173bfdc4996c239d"
+    },
+    {
+      "file": "phishing-domains-ACTIVE.txt",
+      "url": "https://raw.githubusercontent.com/mitchellkrogza/Phishing.Database/master/phishing-domains-ACTIVE.txt",
+      "lines": 392178,
+      "bytes": 11023128,
+      "sha256": "70c6c2e24e6b3484e7ace27b079723e55937bc1f4cbd98bea38a472ec8e37326"
+    },
+    {
+      "file": "openphish-feed.txt",
+      "url": "https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt",
+      "lines": 300,
+      "bytes": 15283,
+      "sha256": "ca91496d33a50563e0c9c7ff8231f0dad5c6a0b400f8d271941dbf9deeb19439"
+    },
+    {
+      "file": "top-10000-domains.txt",
+      "url": "https://raw.githubusercontent.com/zer0h/top-1000000-domains/master/top-10000-domains",
+      "lines": 10000,
+      "bytes": 129626,
+      "sha256": "3ad5aa034b4ad9eaf5c27b3bd176e906a7eea0fd1126d37789c06c05a6b80795"
+    },
+    {
+      "file": "top-1m.txt",
+      "url": "https://raw.githubusercontent.com/zer0h/top-1000000-domains/master/top-1000000-domains",
+      "lines": 1000000,
+      "bytes": 15553310,
+      "sha256": "f20cbd5f1b4d975135d6ccf7fe776e4ce681f86003641e70df651eb98824362c"
+    }
+  ]
+}

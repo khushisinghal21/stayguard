@@ -80,19 +80,27 @@ def test_simulation_and_containment(service):
 
 
 def test_idempotency(service):
+    from stayguard.service import IdempotencyConflict
     r = service.upcoming("H1", limit=1)[0]
-    a = service.check_message(text="Pay now at https://bit.ly/x", reservation_id=r["id"], message_id="idem-1")
-    b = service.check_message(text="different text", reservation_id=r["id"], message_id="idem-1")
-    assert b.get("idempotent_replay") and b["decision"] == a["decision"]
+    a = service.check_message(text="Breakfast is from 7.", reservation_id=r["id"], message_id="idem-1")
+    again = service.check_message(text="Breakfast is from 7.", reservation_id=r["id"], message_id="idem-1")
+    assert again.get("idempotent_replay") and again["decision"] == a["decision"]
+    try:
+        service.check_message(text="Pay 300 EUR by bank transfer today", reservation_id=r["id"], message_id="idem-1")
+        raise AssertionError("a reused key with a new payload must be rejected")
+    except IdempotencyConflict:
+        pass
 
 
 def test_guest_verify_pin_and_lockout(service):
     r = service.upcoming("H1", limit=1, terms="pay_at_property")[0]
-    good = service.guest_verify(r["id"], r["pin"], "Please pay 100 EUR by bank transfer today to keep the room")
+    pin = service.issue_pin(r["id"])
+    good = service.guest_verify(r["id"], pin, "Please pay 100 EUR by bank transfer today to keep the room", client="t1")
     assert good["ok"] and good["verdict"] in ("likely_scam", "scam")
+    wrong = "0000" if pin != "0000" else "1111"
     for _ in range(5):
-        service.guest_verify(r["id"], "9999" if r["pin"] != "9999" else "0000", "x")
-    locked = service.guest_verify(r["id"], r["pin"], "x")
+        service.guest_verify(r["id"], wrong, "x", client="t1")
+    locked = service.guest_verify(r["id"], pin, "x", client="t2")
     assert not locked["ok"] and locked["error"] == "too_many_attempts"
 
 

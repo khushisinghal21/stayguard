@@ -17,12 +17,12 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from urllib.parse import urlsplit
 
-import tldextract
 from rapidfuzz import fuzz
 
 from . import config
+from .domains import EXTRACT as _EXTRACT
+from .domains import host_of, is_ip, registered_domain
 
-_EXTRACT = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None)  # offline: bundled public-suffix snapshot
 
 # "hotels" and "kayak" are deliberately absent: fuzzy-matching them would flag every hotel's own site.
 BRANDS = {"booking": "booking.com", "airbnb": "airbnb.com", "agoda": "agoda.com", "expedia": "expedia.com",
@@ -72,23 +72,6 @@ def _raw_blocklist() -> frozenset[str]:
     top = _top_domains()
     return frozenset(h for h in hosts if h not in top and registered_domain(h) not in config.OFFICIAL_DOMAINS
                      and h.removeprefix("www.") not in top)
-
-
-def registered_domain(host: str) -> str:
-    ext = _EXTRACT(host)
-    rd = ext.top_domain_under_public_suffix if hasattr(ext, "top_domain_under_public_suffix") else ext.registered_domain
-    return (rd or host).lower()
-
-
-def host_of(url: str) -> str:
-    u = url.strip()
-    u = re.sub(r"^hxxp", "http", u, flags=re.IGNORECASE)
-    if "://" not in u:
-        u = "http://" + u
-    try:
-        return (urlsplit(u).hostname or "").lower().rstrip(".")
-    except ValueError:
-        return ""
 
 
 @dataclass

@@ -10,6 +10,8 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
+from .domains import is_public_host
+
 # ----------------------------------------------------------------------------------------------
 # Normalisation
 # ----------------------------------------------------------------------------------------------
@@ -165,12 +167,12 @@ INJECTION = _rx(
     r"pichle (?:sab )?instructions? ignore", r"पिछले निर्देश",
 )
 
+# Candidate links: anything with a scheme or www., or a dotted name. Scheme-less candidates are then validated
+# against the public-suffix list (domains.is_public_host) instead of a hand-written TLD list, which used to miss
+# whole countries (.ro, .pl, .ws ...) and cut `.com.br` down to `.com`.
 URL_RX = re.compile(
     r"(?:(?:https?|hxxps?)://|www\.)[^\s<>\"')\]]+"
-    r"|\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|io|app|eu|xyz|info|live|shop|online|site|top|homes|world|"
-    r"quest|icu|click|link|help|lol|rentals|ly|me|co|in|uk|pt|es|fr|de|it|gl|at|cc|pw|tk|ml|ga|cf|gq|cn|ru|vn|su|"
-    r"sbs|cfd|buzz|rest|bar|pro|biz|today|support|services|guide|page|dev|ai|tech|store|website|space|fun|cyou)"
-    r"(?:/[^\s<>\"')\]]*)?",
+    r"|(?<![\w.-])[\w-]+(?:\.[\w-]+)+(?:/[^\s<>\"')\]]*)?",
     re.IGNORECASE,
 )
 
@@ -259,15 +261,52 @@ class TextSignals:
 BRAND_MENTIONS = {"booking.com", "airbnb.com", "agoda.com", "expedia.com", "priceline.com", "kayak.com", "hotels.com"}
 
 
+def _accept_candidate(m: re.Match, text: str) -> str | None:
+    u = m.group().rstrip(".,;:!?")
+    if not u:
+        return None
+    if re.match(r"(?:https?|hxxps?)://|www\.", u, re.IGNORECASE):
+        return u
+    if u.lower() in BRAND_MENTIONS:
+        return None
+    host_part = u.split("/", 1)[0]
+    end = m.start() + len(u)
+    if "/" not in u and end < len(text) and text[end] == "@":
+        return None  # userinfo before an @ (booking.com@evil.xyz): the real host comes after the @
+    if not is_public_host(host_part.lower()):
+        return None
+    tld = host_part.rsplit(".", 1)[-1]
+    if tld[:1].isupper() and tld[1:].islower():
+        return None  # "today.So" / "room.In": a missing space after a full stop, not a domain
+    return u
+
+
 def _links(text: str) -> list[str]:
-    """URLs in text, ignoring bare brand mentions such as 'Booking.com' in a sentence."""
+    """Links in text, ignoring bare brand mentions such as 'Booking.com' and the domain part of e-mail addresses."""
     out = []
-    for u in URL_RX.findall(text):
-        u = u.rstrip(".,;:!?")
-        if u.lower() in BRAND_MENTIONS:
-            continue
-        out.append(u)
+    for m in URL_RX.finditer(text):
+        if m.start() > 0 and text[m.start() - 1] == "@" and "/" not in m.group():
+            continue  # e-mail address domain
+        u = _accept_candidate(m, text)
+        if u:
+            out.append(u)
     return out
+
+
+def sub_links(text: str, repl) -> str:
+    """Replace every accepted link with repl(link) (a string or a callable)."""
+    out, pos = [], 0
+    for m in URL_RX.finditer(text):
+        if m.start() > 0 and text[m.start() - 1] == "@" and "/" not in m.group():
+            continue
+        u = _accept_candidate(m, text)
+        if not u:
+            continue
+        out.append(text[pos:m.start()])
+        out.append(repl(u) if callable(repl) else repl)
+        pos = m.start() + len(u)
+    out.append(text[pos:])
+    return "".join(out)
 
 
 def _spans(rx: re.Pattern, text: str) -> list[str]:

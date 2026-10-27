@@ -1,0 +1,24 @@
+engine failed closed: ZeroDivisionError
+Traceback (most recent call last):
+  File "/home/claude/stayguard/stayguard/engine.py", line 159, in check
+    d = self._check(text, dict(ctx or {}), t0, partial)
+  File "/home/claude/stayguard/stayguard/engine.py", line 253, in _check
+    model_p = self.clf.score(text)
+  File "/tmp/claude-0/-home-claude/d668c328-a1a5-51bd-b683-0485a90368c8/scratchpad/repro2.py", line 29, in <lambda>
+    e2 = Engine(); e2.clf.score = lambda t: 1 / 0
+                                            ~~^~~
+ZeroDivisionError: division by zero
+1.1 plaintext pin column present: False | hashed: True
+1.2 production mode demo-pin: 404 | /v1/messages: 503 | llm-outage: 503 | simulate: 404 | guest verify (public): 200
+1.3 first deliver | reused key + new text -> 409
+1.6 judge KeyError -> model hold ['MODEL_HIGH_RISK'] | breaker failures 0
+1.7 classifier exception -> hold ['SYSTEM_EXCEPTION_FAIL_CLOSED']
+1.8 Pay here booking-verify.ro/pay now -> ['booking-verify.ro/pay']
+1.8 confirm at guest-pay.pl/x -> ['guest-pay.pl/x']
+1.8 go to reserva-cartao.com.br/pay -> ['reserva-cartao.com.br/pay']
+1.8 verify at hotel-pay.ws -> ['hotel-pay.ws']
+1.8 visit stay-pay.lat -> ['stay-pay.lat']
+1.10 raw card number in /v1/messages: False
+1.11 services built by 4 cold threads: 1
+1.6 judge bug -> fail_closed hold ['SYSTEM_EXCEPTION_FAIL_CLOSED'] | breaker failures 0
+1.6 provider down -> degraded warn ['DEGRADED_WARN'] | breaker failures 1

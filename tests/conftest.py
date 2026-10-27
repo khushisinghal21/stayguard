@@ -7,6 +7,7 @@ import pytest
 
 _tmp = tempfile.mkdtemp(prefix="stayguard-test-")
 os.environ["STAYGUARD_DB"] = str(Path(_tmp) / "test.db")
+os.environ["STAYGUARD_DEMO_MODE"] = "1"
 os.environ.pop("STAYGUARD_ANTHROPIC_API_KEY", None)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 

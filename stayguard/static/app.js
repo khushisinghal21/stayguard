@@ -8,6 +8,8 @@ function h(tag, attrs = {}, ...kids) {
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v === null || v === undefined || v === false) continue;
     if (k === "class") el.className = v;
+    else if (k === "style") el.style.cssText = v; // CSSOM, allowed under a CSP without 'unsafe-inline'
+
     else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
     else el.setAttribute(k, v === true ? "" : v);
   }
@@ -249,7 +251,7 @@ function linksView(m) {
 $("#gFill").addEventListener("click", async () => {
   const offset = Math.floor(Math.random() * 200);
   const [r] = await api(`/v1/properties/H2/reservations?limit=1&terms=pay_at_property&offset=${offset}`);
-  const p = await api(`/v1/reservations/${r.id}/demo-pin`);
+  const p = await api(`/v1/reservations/${r.id}/demo-pin`, {});
   $("#gRes").value = r.id; $("#gPin").value = p.pin;
 });
 $("#guestForm").addEventListener("submit", async (e) => {

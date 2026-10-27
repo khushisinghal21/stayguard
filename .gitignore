@@ -4,3 +4,4 @@ __pycache__/
 stayguard.db*
 models/
 data/raw/
+data/snapshots/

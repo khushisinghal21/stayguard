@@ -5,7 +5,8 @@ useful for Hindi (Devanagari), Hinglish and European languages without a heavy m
 scores a message in well under a millisecond.
 
 Training data
-- UCI SMS Spam Collection (5,574 real labelled SMS) - teaches generic scam/urgency language.
+- UCI SMS Spam Collection (5,574 real labelled SMS) - teaches generic scam/urgency language. Split 60/15/25
+  into train / calibration / test (`sms_splits`); only the train part is fitted on.
 - data/curated/train_seeds.jsonl - hand-written hotel messages (EN/HI/Hinglish/ES/PT/FR/DE/IT), expanded
   with random names, amounts, deadlines and links. Weighted higher because it is the target domain.
 The golden evaluation set (data/curated/golden_eval.jsonl) is never used here.
@@ -20,7 +21,6 @@ import random
 import re
 from dataclasses import dataclass
 
-import joblib
 import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -30,7 +30,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import FeatureUnion, Pipeline
 
 from . import config
-from .signals import URL_RX, normalise
+from .artifacts import load_model, save_model
+from .signals import normalise, sub_links
 
 MODEL_PATH = config.MODELS / "scam_classifier.joblib"
 SEED = 7
@@ -49,7 +50,7 @@ LEGIT_LINKS = ["https://maps.app.goo.gl/{n}a", "https://www.booking.com/mybookin
 
 def prep(text: str) -> str:
     t = normalise(text)
-    t = URL_RX.sub(" URLTOKEN ", t)
+    t = sub_links(t, " URLTOKEN ")
     return t.lower()
 
 
@@ -82,6 +83,15 @@ def sms_rows() -> pd.DataFrame:
     return df
 
 
+def sms_splits() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Seeded, stratified 60 / 15 / 25 split of the SMS corpus into train / calibration / test.
+    Calibration rows choose the model thresholds (eval/calibrate.py); test rows are only ever reported on."""
+    sms = sms_rows()
+    rest, sms_te = train_test_split(sms, test_size=0.25, random_state=SEED, stratify=sms["label"])
+    sms_tr, sms_cal = train_test_split(rest, test_size=0.20, random_state=SEED, stratify=rest["label"])
+    return sms_tr, sms_cal, sms_te
+
+
 def build_pipeline() -> Pipeline:
     feats = FeatureUnion([
         ("word", TfidfVectorizer(analyzer="word", ngram_range=(1, 2), min_df=1, sublinear_tf=True, max_features=40000,
@@ -104,8 +114,7 @@ class TrainReport:
 
 
 def train(save: bool = True) -> tuple[Pipeline, TrainReport, pd.DataFrame]:
-    sms = sms_rows()
-    sms_tr, sms_te = train_test_split(sms, test_size=0.25, random_state=SEED, stratify=sms["label"])
+    sms_tr, sms_cal, sms_te = sms_splits()
     hotel = hotel_training_rows()
     tr = pd.concat([sms_tr, hotel], ignore_index=True)
     weights = np.where(tr["source"] == "hotel_seed", 3.0, 1.0)
@@ -121,8 +130,9 @@ def train(save: bool = True) -> tuple[Pipeline, TrainReport, pd.DataFrame]:
         n_train=int(len(tr)), n_sms_train=int(len(sms_tr)), n_hotel_train=int(len(hotel)))
     if save:
         config.MODELS.mkdir(parents=True, exist_ok=True)
-        joblib.dump({"pipeline": pipe, "report": rep.as_dict(), "version": "tfidf-lr-1"}, MODEL_PATH)
+        save_model({"pipeline": pipe, "report": rep.as_dict(), "version": "tfidf-lr-1"}, MODEL_PATH)
         sms_te.to_csv(config.MODELS / "sms_holdout.csv", index=False)
+        sms_cal.to_csv(config.MODELS / "sms_calibration.csv", index=False)
     return pipe, rep, sms_te
 
 
@@ -130,9 +140,10 @@ class ScamClassifier:
     version = "tfidf-lr-1"
 
     def __init__(self) -> None:
-        if not MODEL_PATH.exists():
+        blob = load_model(MODEL_PATH)
+        if blob is None:  # missing, or not the file we wrote
             train(save=True)
-        blob = joblib.load(MODEL_PATH)  # produced locally by train(); never load models from untrusted sources
+            blob = load_model(MODEL_PATH)
         self.pipe: Pipeline = blob["pipeline"]
         self.report = blob.get("report", {})
 

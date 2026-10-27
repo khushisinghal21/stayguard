@@ -61,10 +61,13 @@ class JudgeUnavailable(Exception):
 # Circuit breaker
 # ----------------------------------------------------------------------------------------------
 class CircuitBreaker:
-    def __init__(self, failures: int = config.BREAKER_FAILURES, cooldown: float = config.BREAKER_COOLDOWN_S):
+    def __init__(self, failures: int = config.BREAKER_FAILURES, cooldown: float = config.BREAKER_COOLDOWN_S,
+                 clock=time.monotonic):
         self.max_failures, self.cooldown = failures, cooldown
         self.failures, self.opened_at = 0, 0.0
         self.forced_outage = False   # demo switch: "LLM provider is down"
+        self.probe_in_flight = False  # half-open lets exactly one request test the provider
+        self.clock = clock
         self._lock = threading.Lock()
 
     @property
@@ -72,20 +75,28 @@ class CircuitBreaker:
         if self.forced_outage:
             return "open (simulated outage)"
         if self.failures >= self.max_failures:
-            return "half-open" if time.time() - self.opened_at > self.cooldown else "open"
+            return "half-open" if self.clock() - self.opened_at > self.cooldown else "open"
         return "closed"
 
     def allow(self) -> bool:
-        return self.state in ("closed", "half-open")
+        with self._lock:
+            state = self.state
+            if state == "closed":
+                return True
+            if state == "half-open" and not self.probe_in_flight:
+                self.probe_in_flight = True
+                return True
+            return False
 
     def record(self, ok: bool) -> None:
         with self._lock:
+            self.probe_in_flight = False
             if ok:
                 self.failures = 0
             else:
                 self.failures += 1
                 if self.failures >= self.max_failures:
-                    self.opened_at = time.time()
+                    self.opened_at = self.clock()
 
 
 # ----------------------------------------------------------------------------------------------
@@ -198,12 +209,23 @@ class AnthropicJudge:
         if not m:
             raise JudgeUnavailable("judge returned no JSON")
         data = json.loads(m.group())
+        # The reply is untrusted too: a malformed one is a provider failure, not a crash.
+        if not isinstance(data, dict):
+            raise JudgeUnavailable("reply is not a JSON object")
         verdict = data.get("verdict")
         if verdict not in ("scam", "legit"):
             raise JudgeUnavailable("bad verdict")
-        ok, bad = validate_quotes(list(data.get("evidence", []))[:6], masked)
-        return JudgeOpinion(role, verdict, float(max(0, min(1, data.get("confidence", 0.5)))), ok, bad,
-                            str(data.get("rationale", ""))[:300])
+        try:
+            confidence = float(data.get("confidence", 0.5))
+        except (TypeError, ValueError) as e:
+            raise JudgeUnavailable("bad confidence") from e
+        if confidence != confidence:  # NaN
+            raise JudgeUnavailable("bad confidence")
+        evidence = data.get("evidence", [])
+        if not isinstance(evidence, list):
+            raise JudgeUnavailable("evidence is not a list")
+        ok, bad = validate_quotes([str(q) for q in evidence][:6], masked)
+        return JudgeOpinion(role, verdict, max(0.0, min(1.0, confidence)), ok, bad, str(data.get("rationale", ""))[:300])
 
     def rule(self, masked: str, sig: TextSignals, ctx: dict, model_p: float, link_worst: float) -> Ruling:
         t0 = time.perf_counter()
@@ -212,7 +234,7 @@ class AnthropicJudge:
         def run(role: str) -> None:
             try:
                 results[role] = self._ask(role, masked, ctx)
-            except Exception as e:  # noqa: BLE001 - any provider error is a judge failure
+            except Exception as e:  # noqa: BLE001 - sorted into provider failure vs bug below
                 results[role] = e
 
         threads = [threading.Thread(target=run, args=(r,)) for r in ("prosecutor", "defender")]
@@ -221,9 +243,19 @@ class AnthropicJudge:
         for th in threads:
             th.join(self.timeout + 0.5)
         pro, de = results.get("prosecutor"), results.get("defender")
-        if not isinstance(pro, JudgeOpinion) or not isinstance(de, JudgeOpinion):
-            raise JudgeUnavailable(str(pro if not isinstance(pro, JudgeOpinion) else de))
+        for r in (pro, de):
+            if r is None:
+                raise JudgeUnavailable("judge timed out")
+            if isinstance(r, PROVIDER_ERRORS):
+                raise JudgeUnavailable(f"{type(r).__name__}: {r}") from r
+            if isinstance(r, Exception):
+                raise r  # a bug in our parsing code: let the engine fail closed
+        assert isinstance(pro, JudgeOpinion) and isinstance(de, JudgeOpinion)
         return Ruling(referee(pro, de), pro, de, f"anthropic:{self.model}", (time.perf_counter() - t0) * 1000)
+
+
+# What counts as "the provider is unavailable" (feeds the breaker, uses the degraded policy).
+PROVIDER_ERRORS = (JudgeUnavailable, httpx.HTTPError, TimeoutError, json.JSONDecodeError)
 
 
 def make_judge():

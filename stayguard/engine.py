@@ -5,6 +5,7 @@ settle. Every decision carries reason codes, quoted evidence, the path that deci
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from dataclasses import dataclass, field
@@ -15,6 +16,7 @@ from .judges import CircuitBreaker, JudgeUnavailable, OfflineJudge, make_judge
 from .links import LinkChecker
 from .signals import detect_language, extract, mask_pii
 
+log = logging.getLogger("stayguard.engine")
 RANK = {"deliver": 0, "warn": 1, "hold": 2, "block": 3}
 VERSIONS = {"engine": "1.0.0", "rules": "2026-10-27", "classifier": ScamClassifier.version, "links": "feeds+heuristics-1"}
 
@@ -47,6 +49,7 @@ REASON_TEXT = {
     "DEGRADED_WARN": "AI review unavailable - delivered with a warning (normal session).",
     "DEGRADED_RISKY_SESSION": "AI review unavailable and the sender's session is risky - held.",
     "RISKY_SESSION": "Sender's login looks unusual, so the decision was made one step stricter.",
+    "SYSTEM_EXCEPTION_FAIL_CLOSED": "StayGuard hit an internal error, so the message is held for review rather than delivered.",
     "SESSION_TAKEOVER_SUSPECTED": "Sender's login looks taken over. Nothing goes out until the hotel re-confirms with a passkey.",
 }
 
@@ -82,6 +85,23 @@ class Decision:
                 "latency_ms": round(self.latency_ms, 2), "llm_called": self.llm_called, "versions": VERSIONS}
 
 
+def judge_cost_estimate_usd(message: str = "x" * 200) -> float:
+    """ESTIMATED cost of judging one message with two LLM judges at the configured price (see config.py)."""
+    from .judges import BRIEFS, SYSTEM
+    total = 0.0
+    for role, brief in BRIEFS.items():
+        prompt_chars = len(SYSTEM.format(role=role, brief=brief)) + len(message) + 200  # 200 = context + tags
+        total += (prompt_chars / 4) * config.LLM_PRICE_IN_PER_MTOK / 1e6
+        total += config.JUDGE_OUTPUT_TOKENS * config.LLM_PRICE_OUT_PER_MTOK / 1e6
+    return total
+
+
+def _touches_money_or_links(asks_for_money: bool, links: list, worst_link_score: float) -> bool:
+    """True when the message asks for money/card data, or carries any link that is not official (score > 0)."""
+    has_unofficial_link = bool(links) and worst_link_score > 0.0
+    return asks_for_money or has_unofficial_link
+
+
 class Metrics:
     def __init__(self) -> None:
         self.lock = threading.Lock()
@@ -94,6 +114,11 @@ class Metrics:
         self.latencies: list[float] = []
         self.llm_calls = 0
         self.judge_failures = 0
+        self.fail_closed = 0
+
+    def judge_failed(self) -> None:
+        with self.lock:
+            self.judge_failures += 1
 
     def record(self, d: Decision) -> None:
         with self.lock:
@@ -103,6 +128,7 @@ class Metrics:
             self.latencies.append(d.latency_ms)
             self.latencies = self.latencies[-5000:]
             self.llm_calls += int(d.llm_called)
+            self.fail_closed += int(d.path == "fail_closed")
 
     def snapshot(self, judge_provider: str) -> dict:
         with self.lock:
@@ -111,9 +137,9 @@ class Metrics:
             share = self.llm_calls / self.total if self.total else 0.0
             return {"total": self.total, "by_decision": dict(self.by_decision), "by_path": dict(self.by_path),
                     "p50_ms": pct(0.5), "p95_ms": pct(0.95), "judge_share": round(share, 4),
-                    "judge_failures": self.judge_failures, "judge_provider": judge_provider,
-                    "cost_per_1000_usd": round(share * config.LLM_COST_PER_CALL_USD * 1000, 4),
-                    "cost_per_1000_if_all_llm_usd": round(config.LLM_COST_PER_CALL_USD * 1000, 2)}
+                    "judge_failures": self.judge_failures, "fail_closed": self.fail_closed, "judge_provider": judge_provider,
+                    "est_cost_per_1000_usd": round(share * judge_cost_estimate_usd() * 1000, 4),
+                    "est_cost_per_1000_if_all_llm_usd": round(judge_cost_estimate_usd() * 1000, 4)}
 
 
 class Engine:
@@ -126,9 +152,24 @@ class Engine:
 
     # ------------------------------------------------------------------------------------------
     def check(self, text: str, ctx: dict | None = None, record: bool = True) -> Decision:
-        ctx = dict(ctx or {})
+        """Decide on one message. Never raises: any internal error holds the message (fail closed)."""
         t0 = time.perf_counter()
-        trace: list[dict] = []
+        partial: dict = {"trace": [], "evidence": []}
+        try:
+            d = self._check(text, dict(ctx or {}), t0, partial)
+        except Exception as exc:  # noqa: BLE001 - an unexpected error must hold the message, never deliver it
+            log.exception("engine failed closed: %s", type(exc).__name__)
+            partial["trace"].append({"stage": "error", "ms": 0.0, "error": type(exc).__name__})
+            d = Decision("hold", 1.0, ["SYSTEM_EXCEPTION_FAIL_CLOSED"], "fail_closed", partial["evidence"],
+                         partial.get("links", []), partial.get("model_p"), (ctx or {}).get("session"), None,
+                         partial.get("lang", "en"), partial.get("pii", []), partial.get("masked", ""), None, False,
+                         partial["trace"], (time.perf_counter() - t0) * 1000, False)
+        if record:
+            self.metrics.record(d)
+        return d
+
+    def _check(self, text: str, ctx: dict, t0: float, partial: dict) -> Decision:
+        trace: list[dict] = partial["trace"]
 
         def stage(name: str, start: float, **out) -> None:
             trace.append({"stage": name, "ms": round((time.perf_counter() - start) * 1000, 3), **out})
@@ -141,8 +182,10 @@ class Engine:
         # 1. guardrails --------------------------------------------------------------------
         s = time.perf_counter()
         masked, pii = mask_pii(text)
+        partial.update(masked=masked, pii=pii)
         sig = extract(text)
         lang = detect_language(text)
+        partial["lang"] = lang
         stage("guardrails", s, pii_masked=pii, injection=sig.injection, hidden_chars=sig.hidden_chars)
 
         # 2. links -------------------------------------------------------------------------
@@ -151,8 +194,9 @@ class Engine:
         worst = max((v.score for v in lv), default=0.0)
         stage("links", s, checked=len(lv), worst=round(worst, 3))
 
+        partial["links"] = [v.as_dict() for v in lv]
         decision, reasons, path = "deliver", [], "rule"
-        evidence: list[dict] = []
+        evidence: list[dict] = partial["evidence"]
 
         def ev(kind: str, quotes: list[str]) -> None:
             for q in quotes[:3]:
@@ -207,6 +251,7 @@ class Engine:
         # 4. small model -------------------------------------------------------------------
         s = time.perf_counter()
         model_p = self.clf.score(text)
+        partial["model_p"] = model_p
         stage("model", s, p=round(model_p, 4))
 
         judges_out, llm_called = None, False
@@ -223,13 +268,16 @@ class Engine:
                 s = time.perf_counter()
                 ruling = None
                 if self.breaker.allow():
+                    # Only provider problems (timeout, HTTP, unparseable reply) count as "judges unavailable" and
+                    # feed the breaker. Anything else is a bug in our code: it propagates to check(), which holds
+                    # the message, instead of quietly delivering it under the degraded policy.
                     try:
                         ruling = self.judge.rule(masked, sig, ctx, model_p, worst)
                         llm_called = not isinstance(self.judge, OfflineJudge)
                         self.breaker.record(True)
-                    except (JudgeUnavailable, Exception):  # noqa: BLE001
+                    except JudgeUnavailable:
                         self.breaker.record(False)
-                        self.metrics.judge_failures += 1
+                        self.metrics.judge_failed()
                 if ruling:
                     path = "judges"
                     judges_out = ruling.as_dict()
@@ -257,17 +305,18 @@ class Engine:
         # 6. session escalation ------------------------------------------------------------
         s = time.perf_counter()
         risk = float(session.get("risk", 0.0))
-        touches_money = sig.money_ask or sig.soft_money_ask or sig.card_data or bool(lv) and worst > 0.0
+        touches_money = _touches_money_or_links(sig.money_ask or sig.soft_money_ask or sig.card_data, lv, worst)
         suggest = False
         if risk >= config.SESSION_CRITICAL:
             # a session that looks taken over gets nothing out until the hotel re-confirms with a passkey
             escalate("block" if (touches_money or decision != "deliver") else "hold", "SESSION_TAKEOVER_SUSPECTED")
             suggest = True
         elif risk >= config.SESSION_RISKY:
-            if decision in ("deliver", "warn") and (touches_money or decision == "warn"):
-                escalate("hold" if decision == "warn" else "warn", "RISKY_SESSION")
-            elif decision == "deliver":
-                pass
+            # one step stricter: a warning becomes a hold; a clean delivery that involves money or links gets a warning
+            if decision == "warn":
+                escalate("hold", "RISKY_SESSION")
+            elif decision == "deliver" and touches_money:
+                escalate("warn", "RISKY_SESSION")
         if decision in ("hold", "block") and risk >= config.SESSION_RISKY:
             suggest = True
         stage("session", s, risk=round(risk, 3), level=session.get("level"))
@@ -279,12 +328,9 @@ class Engine:
         if decision == "warn" and direction == "hotel_to_guest":
             banner = BANNERS.get(lang, BANNERS["en"])
 
-        d = Decision(decision, float(conf or 0.9), reasons, path, evidence, [v.as_dict() for v in lv], model_p,
-                     session, judges_out, lang, pii, masked, banner, suggest, trace,
-                     (time.perf_counter() - t0) * 1000, llm_called)
-        if record:
-            self.metrics.record(d)
-        return d
+        return Decision(decision, float(conf or 0.9), reasons, path, evidence, [v.as_dict() for v in lv], model_p,
+                        session, judges_out, lang, pii, masked, banner, suggest, trace,
+                        (time.perf_counter() - t0) * 1000, llm_called)
 
     @property
     def judge_provider(self) -> str:

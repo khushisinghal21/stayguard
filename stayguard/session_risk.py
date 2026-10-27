@@ -14,13 +14,13 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-import joblib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.metrics import roc_auc_score
 
 from . import config
+from .artifacts import load_model, save_model
 
 MODEL_PATH = config.MODELS / "session_iforest.joblib"
 FEATURES = ["hour_offset", "is_new_device", "log_km_from_usual", "log_speed_kmh", "new_asn", "hosting_asn",
@@ -174,7 +174,7 @@ def train(seed: int = 11, save: bool = True) -> tuple[dict, dict]:
     }
     if save:
         config.MODELS.mkdir(parents=True, exist_ok=True)
-        joblib.dump({**blob, "report": report}, MODEL_PATH)
+        save_model({**blob, "report": report}, MODEL_PATH)
     return blob, report
 
 
@@ -183,9 +183,10 @@ class SessionRiskModel:
 
     def __init__(self, blob: dict | None = None) -> None:
         if blob is None:
-            if not MODEL_PATH.exists():
+            blob = load_model(MODEL_PATH)
+            if blob is None:  # missing, or not the file we wrote
                 train(save=True)
-            blob = joblib.load(MODEL_PATH)  # produced locally by train()
+                blob = load_model(MODEL_PATH)
         self.blob = blob
         self.report = blob.get("report", {})
 
