@@ -104,8 +104,11 @@ def sms_rows() -> pd.DataFrame:
 
 def sms_splits() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Seeded, stratified 60 / 15 / 25 split of the SMS corpus into train / calibration / test.
-    Calibration rows choose the model thresholds (eval/calibrate.py); test rows are only ever reported on."""
-    sms = sms_rows()
+    Calibration rows choose the model thresholds (eval/calibrate.py); test rows are only ever reported on.
+    Exact duplicate texts are dropped BEFORE splitting: the corpus repeats some messages (403 duplicate rows), and
+    review round 1 found 97 test-split ham and 28 test-split spam texts that also sat in the training split, which
+    inflated the reported test metrics."""
+    sms = sms_rows().drop_duplicates(subset="text", keep="first").reset_index(drop=True)
     rest, sms_te = train_test_split(sms, test_size=0.25, random_state=SEED, stratify=sms["label"])
     sms_tr, sms_cal = train_test_split(rest, test_size=0.20, random_state=SEED, stratify=rest["label"])
     return sms_tr, sms_cal, sms_te

@@ -247,7 +247,10 @@ def embedded_targets(url: str) -> list[str]:
     fragment (`#https://evil`), or as a scheme-less parameter value (`google.com/url?q=evil.net/x`). Review round 1:
     only the query string used to be checked, so path and fragment redirects on official domains passed as official."""
     host = host_of(url)
-    rest = unquote(url.split(host, 1)[1] if host and host in url.lower() else url)
+    # find the host case-insensitively: splitting the original-case URL on the lower-case host raised IndexError for
+    # "https://WWW.Booking.com/..." and every such message failed closed (found by the post-fix evaluation run)
+    i = url.lower().find(host) if host else -1
+    rest = unquote(url[i + len(host) :] if i >= 0 else url)
     rest = rest[rest.find("/") :] if "/" in rest else rest
     out = EMBEDDED_URL.findall(rest)
     for m in PARAM_VALUE.finditer(rest):

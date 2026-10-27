@@ -376,3 +376,11 @@ def test_rate_limiter_state_is_bounded():
 
 def test_payload_hash_in_report_json_is_valid_json():
     assert json.loads(json.dumps({"ok": True}))
+
+
+def test_upper_case_hosts_do_not_crash_the_redirect_check():
+    from stayguard.links import embedded_targets
+
+    assert embedded_targets("https://WWW.Booking.COM/redirect/https://evil-pay.xyz/x") == ["https://evil-pay.xyz/x"]
+    lc = LinkChecker(use_blocklist=False)
+    assert lc.check("HTTPS://WWW.BOOKING.COM/mybooking").verdict == "official"

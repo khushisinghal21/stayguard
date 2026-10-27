@@ -31,7 +31,9 @@ def test_every_decision_through_the_service(service):
     deliver = service.check_message(text="Check-in is from 3 pm.", reservation_id=rid)
     hold = service.check_message(text="To keep your room please pay the 120 EUR deposit today", reservation_id=rid)
     block = service.check_message(text="Confirm here https://account.booking-extranet.eu/x", reservation_id=rid)
-    warn = service.check_message(text="Room photos: https://guest-photos-id4821.xyz/r", reservation_id=rid)
+    # a shortener can't be followed offline, so it is delivered with a warning (the photo link used here before is held
+    # since the de-duplicated retrain, DECISIONS #30)
+    warn = service.check_message(text="Here is the guest guide: https://bit.ly/3xYz", reservation_id=rid)
     assert [deliver["decision"], warn["decision"], hold["decision"], block["decision"]] == ["deliver", "warn", "hold", "block"]
     assert hold["payment_terms"] == "pay_at_property" and hold["reservation"]["id"] == rid
     stored = db.con().execute("SELECT decision, text FROM messages WHERE id=?", (hold["message_id"],)).fetchone()

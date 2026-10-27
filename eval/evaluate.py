@@ -50,9 +50,15 @@ from stayguard.signals import extract  # noqa: E402
 
 PROPERTY_DOMAINS = ["lisboncityhotel.pt", "algarveresorthotel.pt"]
 FIRST_LOOK = config.EVAL_DIR / "heldout_first_look.json"
+# Held-out v2 was written after review round 1 by an agent with no access to the code, and committed before it was
+# ever run. Its first run is frozen here; evaluate it with --heldout-v2 only when a final number is wanted.
+FIRST_LOOK_V2 = config.EVAL_DIR / "heldout_v2_first_look.json"
 SYSTEM_NAMES = [
     "baseline_blocklist_only",
     "baseline_generic_spam_filter",
+    # review round 1 (C2): the in-domain classifier alone at MODEL_HIGH, so the value added by rules, links and judges
+    # over the model is visible rather than assumed
+    "baseline_stayguard_classifier_only",
     "stayguard_full",
     "stayguard_rules_only",
     "stayguard_zero_day_links_blocklist_off",
@@ -115,6 +121,12 @@ def section_a(rows: list[dict[str, Any]], engine: Engine, engine_nobl: Engine, s
     systems["baseline_blocklist_only"] = score(y, bl)
     sp = [sms_only.predict_proba([prep(x["text"])])[0, 1] >= 0.5 for x in rows]
     systems["baseline_generic_spam_filter"] = score(y, sp)
+    systems["baseline_stayguard_classifier_only"] = score(y, [engine.clf.score(x["text"]) >= config.MODEL_HIGH for x in rows])
+    # Review round 1 (C8): a blocklist can only catch URLs already in the feeds. Report how many there are, so a 0%
+    # blocklist row is read as "no listed URLs in this set", not as a measured weakness of blocklists.
+    urls = [u for x in rows for u in extract(x["text"]).urls]
+    systems["baseline_blocklist_only"]["urls_in_set"] = len(urls)
+    systems["baseline_blocklist_only"]["urls_listed_in_feeds"] = sum("KNOWN_PHISHING_DOMAIN" in lc.check(u).reasons for u in urls)
 
     def run(eng: Engine, name: str, outage: bool = False) -> list[Any]:
         eng.breaker.forced_outage = outage
@@ -194,6 +206,7 @@ def section_b(engine: Engine, fast: bool) -> dict[str, Any]:
             "held_or_blocked_rate": round(held / n, 4) if n else None,
             "held_ci95": wilson(held, n),
             "warned_rate": round(dec["warn"] / n, 4) if n else None,
+            "fail_closed": sum(d.path == "fail_closed" for d in ds),
         }
         if label == 0:
             out[name]["examples_held"] = [t for t, d in zip(sub.text, ds, strict=True) if d.decision in ("hold", "block")][:8]
@@ -336,7 +349,13 @@ def section_e(engine: Engine, scams: list[dict[str, Any]], fast: bool) -> dict[s
         paths[d.path] += 1
     lat.sort()
     share = len(judged) / len(mix)
-    per_judged = statistics.mean(judge_cost_estimate_usd(t) for t in judged) if judged else judge_cost_estimate_usd()
+    # estimates use the real message texts (review round 1, C6: a fixed 200-character dummy was used before)
+    per_judged = (
+        statistics.mean(judge_cost_estimate_usd(t) for t in judged)
+        if judged
+        else statistics.mean(judge_cost_estimate_usd(t) for t, _ in mix)
+    )
+    per_any = statistics.mean(judge_cost_estimate_usd(t) for t, _ in mix)
     return {
         "n": len(mix),
         "mix": f"{n_ham} SMS test-split messages + {n_scam} held-out scams",
@@ -347,7 +366,7 @@ def section_e(engine: Engine, scams: list[dict[str, Any]], fast: bool) -> dict[s
         "p99_ms": round(lat[int(0.99 * len(lat))], 2),
         "est_cost_per_judged_message_usd": round(per_judged, 6),
         "est_cost_per_1000_messages_usd": round(share * per_judged * 1000, 4),
-        "est_cost_per_1000_if_every_message_went_to_llm_usd": round(judge_cost_estimate_usd() * 1000, 4),
+        "est_cost_per_1000_if_every_message_went_to_llm_usd": round(per_any * 1000, 4),
         "price_source": f"Claude Haiku 5.5 ${config.LLM_PRICE_IN_PER_MTOK}/MTok in, ${config.LLM_PRICE_OUT_PER_MTOK}/MTok out "
         "(platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-27)",
         "note": (
@@ -387,7 +406,8 @@ def manifest_info() -> dict[str, Any]:
 def to_md(r: dict[str, Any]) -> str:
     A, B, C, E, F, S = r["A_messages"], r["B_real_sms"], r["C_links"], r["E_cost_latency"], r["F_robustness"], r["D_sessions"]
     pct = lambda v, d=0: "-" if v is None else f"{v:.{d}%}"  # noqa: E731
-    ci = lambda c: "" if not c else f" ({c[0]:.0%}-{c[1]:.0%})"  # noqa: E731
+    # small rates get two decimals: a [0, 0.0032] interval printed as "(0%-0%)" before (review round 1, C9)
+    ci = lambda c: "" if not c else (f" ({c[0]:.0%}-{c[1]:.0%})" if c[1] >= 0.05 else f" ({c[0]:.2%}-{c[1]:.2%})")  # noqa: E731
     lines = [
         "# StayGuard evaluation report",
         "",
@@ -397,16 +417,54 @@ def to_md(r: dict[str, Any]) -> str:
         f"Model thresholds: MODEL_LOW {r['thresholds']['model_low']}, MODEL_HIGH {r['thresholds']['model_high']} "
         f"({r['thresholds']['source']}).",
         "",
-        "**Dev** data was looked at while the rules were built, so dev numbers are optimistic. **Held-out** data was not. "
-        "Read held-out first.",
+        "**Dev** data was looked at while the rules were built, so dev numbers are optimistic. **Held-out v1** was blind "
+        "only for its first run: later fixes were made after its misses were read (review round 1, finding C1), so only "
+        "its frozen first look is a blind number. **Held-out v2** was written afterwards by an agent with no access to "
+        "the code and committed before its first run; its first run is frozen too.",
         "",
-        "## A. Messages: StayGuard vs baselines",
+    ]
+    if r.get("heldout_v2_first_look"):
+        v = r["heldout_v2_first_look"]
+        V = v["A_messages_heldout_v2"]
+        lines += [
+            "## A2. Held-out v2 (blind first run)",
+            "",
+            f"Frozen in `eval/heldout_v2_first_look.json` (commit `{v['git_commit']}`, {v['generated']}). {V['n']} messages "
+            f"({V['n_scam']} scams), sources in `data/curated/HELDOUT_V2_SOURCES.md`.",
+            "",
+            "| System | Caught | False holds | Legit warned |",
+            "|---|---|---|---|",
+        ]
+        for k in SYSTEM_NAMES:
+            h = V["systems"][k]
+            lines.append(f"| {k} | {pct(h['catch_rate'])} | {pct(h['false_alarm_rate'])} | {pct(h.get('legit_warned_rate'))} |")
+        vf = V["systems"]["stayguard_full"]
+        lines += [
+            "",
+            f"StayGuard caught {pct(vf['catch_rate'], 1)}{ci(vf['catch_rate_ci95'])} of scams and falsely held "
+            f"{pct(vf['false_alarm_rate'], 1)}{ci(vf['false_alarm_rate_ci95'])} of legitimate messages (95% Wilson).",
+            "",
+            "| Category | n | Accuracy |",
+            "|---|---|---|",
+        ]
+        lines += [f"| {k} | {x['n']} | {pct(x['accuracy'])} |" for k, x in sorted(V["per_category"].items())]
+        lines += ["", "| Language | n | Accuracy |", "|---|---|---|"]
+        lines += [f"| {k} | {x['n']} | {pct(x['accuracy'])} |" for k, x in sorted(V["per_language"].items())]
+        lines += ["", "Misses, false holds and warned legit messages:", ""]
+        lines += [
+            f"- `{x['id']}` ({x['category']}, {x['lang']}) label={x['label']} -> **{x['decision']}** via {x['path']} "
+            f"{x['reasons']}: {x['text'][:110]}"
+            for x in V["errors_and_warnings"]
+        ] or ["- none"]
+        lines += [""]
+    lines += [
+        "## A. Messages: StayGuard vs baselines (dev and held-out v1)",
         "",
         f"Dev: {A['dev']['n']} hand-written messages ({A['dev']['n_scam']} scams). Held-out: {A['heldout']['n']} messages "
         f"({A['heldout']['n_scam']} scams) built from cited public scam reports and hotel templates "
         "(`data/curated/HELDOUT_SOURCES.md`).",
         "",
-        "| System | Held-out caught | Held-out false holds | Dev caught | Dev false holds |",
+        "| System | Held-out v1 caught | Held-out v1 false holds | Dev caught | Dev false holds |",
         "|---|---|---|---|---|",
     ]
     for k in SYSTEM_NAMES:
@@ -416,7 +474,11 @@ def to_md(r: dict[str, Any]) -> str:
             f"{pct(d['catch_rate'])} | {pct(d['false_alarm_rate'])} |"
         )
     hf = A["heldout"]["systems"]["stayguard_full"]
+    bl = A["heldout"]["systems"]["baseline_blocklist_only"]
     lines += [
+        "",
+        f"The blocklist baseline is uninformative here: {bl['urls_listed_in_feeds']} of the {bl['urls_in_set']} URLs in the "
+        "held-out v1 set appear in the phishing feeds, so it could not catch anything. Section C measures links properly.",
         "",
         f"Held-out, StayGuard: caught {pct(hf['catch_rate'])}{ci(hf.get('catch_rate_ci95'))} of scams, falsely held "
         f"{pct(hf['false_alarm_rate'])}{ci(hf.get('false_alarm_rate_ci95'))} of legitimate messages (95% Wilson intervals), "
@@ -512,7 +574,9 @@ def to_md(r: dict[str, Any]) -> str:
         "",
         f"## E. Cost and latency ({E['mix']})",
         "",
-        f"- Paths: {E['paths']}; share sent to the AI judges: **{pct(E['judge_share'], 1)}**",
+        f"- Paths: {E['paths']}; share sent to the AI judges: **{pct(E['judge_share'], 1)}** on this SMS-heavy mix, "
+        f"**{pct(E['hotel_heldout_judge_share'], 1)}** on the held-out v1 hotel messages "
+        f"(estimated ${E['hotel_heldout_est_cost_per_1000_usd']} per 1,000 at that share).",
         f"- Latency p50 {E['p50_ms']} ms, p95 {E['p95_ms']} ms, p99 {E['p99_ms']} ms",
         f"- **Estimated** LLM cost: ${E['est_cost_per_1000_messages_usd']} per 1,000 messages, vs "
         f"${E['est_cost_per_1000_if_every_message_went_to_llm_usd']} if every message went to the judges "
@@ -560,10 +624,52 @@ def headline(r: dict[str, Any]) -> dict[str, Any]:
         "c3_heldout_n": C["heldout"]["c3_n"],
         "robust_combined_heldout": F["heldout"]["combined"]["catch_rate"],
         "judge_share": E["judge_share"],
+        "hotel_judge_share": E["hotel_heldout_judge_share"],
+        "hotel_est_cost_per_1000": E["hotel_heldout_est_cost_per_1000_usd"],
+        "heldout_classifier_only_caught": A["heldout"]["systems"]["baseline_stayguard_classifier_only"]["catch_rate"],
+        "heldout_classifier_only_false_holds": A["heldout"]["systems"]["baseline_stayguard_classifier_only"]["false_alarm_rate"],
+        "heldout_blocklist_urls_listed": A["heldout"]["systems"]["baseline_blocklist_only"]["urls_listed_in_feeds"],
+        "heldout_blocklist_urls": A["heldout"]["systems"]["baseline_blocklist_only"]["urls_in_set"],
+        "c3_heldout_brand_fp": C["heldout"]["c3_brand_token_false_positive_rate"],
+        "c3_heldout_brand_n": C["heldout"]["c3_brand_token_n"],
+        "heldout_first_look_caught_ci": json.loads(FIRST_LOOK.read_text())["A_messages_heldout"]["systems"]["stayguard_full"].get(
+            "catch_rate_ci95"
+        )
+        if FIRST_LOOK.exists()
+        else None,
+        "sms_ham_held_ci": B["real_ham"]["held_ci95"],
+        # A crash fails closed, which counts as a catch. Any non-zero value here means the catch rates are inflated by
+        # bugs, not earned (the post-round-1 run had 16 such crashes before the upper-case host fix).
+        "fail_closed_crashes": sum(A[k]["paths"].get("fail_closed", 0) for k in ("dev", "heldout"))
+        + B["real_ham"]["fail_closed"]
+        + B["real_spam"]["fail_closed"]
+        + E["paths"].get("fail_closed", 0),
         "p50_ms": E["p50_ms"],
         "p95_ms": E["p95_ms"],
         "est_cost_per_1000": E["est_cost_per_1000_messages_usd"],
         "est_cost_per_1000_all_llm": E["est_cost_per_1000_if_every_message_went_to_llm_usd"],
+    }
+
+
+def headline_v2(fl: dict[str, Any]) -> dict[str, Any]:
+    """Held-out v2 numbers always come from its frozen first run: that is the only blind result it will ever give."""
+    A = fl["A_messages_heldout_v2"]
+    f = A["systems"]["stayguard_full"]
+    cat = A["per_category"]
+    return {
+        "v2_n": A["n"],
+        "v2_n_scam": A["n_scam"],
+        "v2_caught": f["catch_rate"],
+        "v2_caught_ci": f["catch_rate_ci95"],
+        "v2_false_holds": f["false_alarm_rate"],
+        "v2_false_holds_ci": f["false_alarm_rate_ci95"],
+        "v2_legit_warned": f["legit_warned_rate"],
+        "v2_classifier_only_caught": A["systems"]["baseline_stayguard_classifier_only"]["catch_rate"],
+        "v2_classifier_only_false_holds": A["systems"]["baseline_stayguard_classifier_only"]["false_alarm_rate"],
+        "v2_spam_filter_caught": A["systems"]["baseline_generic_spam_filter"]["catch_rate"],
+        "v2_degraded_caught": A["systems"]["stayguard_degraded_llm_down"]["catch_rate"],
+        "v2_legit_payment_accuracy": cat.get("legit_payment", {}).get("accuracy"),
+        "v2_legit_payment_n": cat.get("legit_payment", {}).get("n"),
     }
 
 
@@ -586,6 +692,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--compare", type=Path)
     ap.add_argument("--allow-drift", action="store_true")
     ap.add_argument("--out", type=Path, default=config.EVAL_DIR)
+    ap.add_argument("--heldout-v2", action="store_true", help="also run the blind held-out v2 set (freezes its first look)")
     args = ap.parse_args(argv)
     t0 = time.time()
     print("training classifier ...")
@@ -608,6 +715,18 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     f = {"dev": section_f(dev, engine), "heldout": section_f(heldout, engine)}
     print("E cost/latency ...")
     e = section_e(engine, [x for x in heldout if x["label"] == 1], args.fast)
+    # Review round 1 (C6): the SMS mix is mostly short personal chat, which rarely reaches the judges. Hotel messages
+    # do, so also report the judge share and cost on the hotel-message held-out set.
+    hs = a["heldout"]["paths"].get("judges", 0) / a["heldout"]["n"]
+    e["hotel_heldout_judge_share"] = round(hs, 4)
+    e["hotel_heldout_est_cost_per_1000_usd"] = round(
+        hs * statistics.mean(judge_cost_estimate_usd(x["text"]) for x in heldout) * 1000, 4
+    )
+    v2 = None
+    if args.heldout_v2:
+        print("A held-out v2 (blind) ...")
+        v2rows = [x for x in load_rows("heldout_v2.jsonl") if x.get("split") == "heldout_v2"]
+        v2 = section_a(v2rows, engine, engine_nobl, sms_only)
     report: dict[str, Any] = {
         "generated": time.strftime("%Y-%m-%d %H:%M"),
         "fast": args.fast,
@@ -627,6 +746,9 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         "D_sessions": srep,
         "E_cost_latency": e,
         "F_robustness": f,
+        "A_messages_heldout_v2": v2,
+        "heldout_v2_sha256": _sha256(config.DATA_CURATED / "heldout_v2.jsonl") if v2 else None,
+        "heldout_v2_commit": _git("log", "-1", "--format=%h", "--", "data/curated/heldout_v2.jsonl") if v2 else None,
         "classifier": crep.as_dict(),
         "runtime_s": round(time.time() - t0, 1),
     }
@@ -649,6 +771,23 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         )
     if FIRST_LOOK.exists():
         report["heldout_first_look"] = json.loads(FIRST_LOOK.read_text())
+    if v2 is not None and not args.fast and not FIRST_LOOK_V2.exists():
+        FIRST_LOOK_V2.write_text(
+            json.dumps(
+                {
+                    "generated": report["generated"],
+                    "git_commit": report["git_commit"],
+                    "heldout_v2_sha256": report["heldout_v2_sha256"],
+                    "A_messages_heldout_v2": v2,
+                    "note": "First evaluation ever run on held-out v2. Never overwritten.",
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+    if FIRST_LOOK_V2.exists():
+        report["heldout_v2_first_look"] = json.loads(FIRST_LOOK_V2.read_text())
+        report["headline"].update(headline_v2(report["heldout_v2_first_look"]))
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False))
     (args.out / "report.md").write_text(to_md(report), encoding="utf-8")
