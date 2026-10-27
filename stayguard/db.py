@@ -1,8 +1,9 @@
 """SQLite storage (Postgres in production; the schema is plain SQL so it ports directly).
 
 Reservations are the REAL rows of the Hotel Booking Demand dataset (119,390 bookings at a resort hotel in the
-Algarve and a city hotel in Lisbon). Changes, all for the demo: arrival dates are shifted +10 years so some stays
-are upcoming (their status becomes Confirmed/Canceled), and guests get a synthetic display name (the dataset has
+Algarve and a city hotel in Lisbon). Changes, all for the demo: arrival years are shifted so the dataset's last year
+lands next year (2017 -> 2027 when run in 2026), so some stays are always upcoming (their status becomes
+Confirmed/Canceled), and guests get a synthetic display name (the dataset has
 no names, by design). `deposit_type` gives the payment terms that the core rule depends on:
     No Deposit -> pay_at_property   Non Refund -> prepaid   Refundable -> deposit
 
@@ -14,6 +15,7 @@ Security notes
 - Each thread gets its own connection (FastAPI runs sync endpoints in a thread pool, and one sqlite3 connection
   shared across threads is not safe for concurrent reads). Writes are still serialised through `_lock`.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -77,22 +79,73 @@ CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit BEGIN SELECT
 CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit BEGIN SELECT RAISE(ABORT, 'audit log is append-only'); END;
 CREATE TABLE IF NOT EXISTS idempotency (key TEXT PRIMARY KEY, created REAL, payload_hash TEXT, response TEXT);
 """
-RUNTIME_TABLES = ("properties", "reservations", "sessions", "reservation_reads", "messages", "guest_notices",
-                  "guest_attempts", "cases", "idempotency")
+RUNTIME_TABLES = (
+    "properties",
+    "reservations",
+    "sessions",
+    "reservation_reads",
+    "messages",
+    "guest_notices",
+    "guest_attempts",
+    "cases",
+    "idempotency",
+)
 
 TERMS = {"No Deposit": "pay_at_property", "Non Refund": "prepaid", "Refundable": "deposit"}
-MONTHS = {m: i for i, m in enumerate(["January", "February", "March", "April", "May", "June", "July", "August",
-                                       "September", "October", "November", "December"], 1)}
-FIRST = ["Sarah", "Ahmed", "Priya", "Lukas", "Maria", "Tom", "Aisha", "João", "Chen", "Elena", "Rahul", "Sophie",
-         "Omar", "Anna", "Carlos", "Marta", "Pierre", "Giulia", "Hannah", "Diego", "Inês", "Noah", "Ana", "Ravi"]
+MONTHS = {
+    m: i
+    for i, m in enumerate(
+        [
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ],
+        1,
+    )
+}
+FIRST = [
+    "Sarah",
+    "Ahmed",
+    "Priya",
+    "Lukas",
+    "Maria",
+    "Tom",
+    "Aisha",
+    "João",
+    "Chen",
+    "Elena",
+    "Rahul",
+    "Sophie",
+    "Omar",
+    "Anna",
+    "Carlos",
+    "Marta",
+    "Pierre",
+    "Giulia",
+    "Hannah",
+    "Diego",
+    "Inês",
+    "Noah",
+    "Ana",
+    "Ravi",
+]
 LAST = ["S.", "K.", "M.", "R.", "P.", "L.", "D.", "F.", "B.", "C.", "G.", "N."]
 PROPERTIES = [
     ("H1", "Algarve Resort Hotel", "Faro", "PRT", ["algarveresorthotel.pt"]),
     ("H2", "Lisbon City Hotel", "Lisbon", "PRT", ["lisboncityhotel.pt"]),
 ]
 
-_lock = threading.RLock()          # serialises writes
-_local = threading.local()         # one connection per thread
+_lock = threading.RLock()  # serialises writes
+_local = threading.local()  # one connection per thread
 _init_lock = threading.Lock()
 _initialised: set[str] = set()
 
@@ -167,8 +220,10 @@ def pin_matches(pin: str, salt: str | None, pin_hash: str | None) -> bool:
 def set_pin(t: sqlite3.Connection, reservation_id: str) -> str:
     """Give a reservation a fresh random PIN. Returns the PIN once; only its hash is stored."""
     pin, salt = new_pin(), secrets.token_hex(8)
-    t.execute("UPDATE reservations SET pin_salt=?, pin_hash=?, pin_rotated_at=? WHERE id=?",
-              (salt, hash_pin(pin, salt), time.time(), reservation_id))
+    t.execute(
+        "UPDATE reservations SET pin_salt=?, pin_hash=?, pin_rotated_at=? WHERE id=?",
+        (salt, hash_pin(pin, salt), time.time(), reservation_id),
+    )
     return pin
 
 
@@ -181,31 +236,55 @@ def seed(force: bool = False) -> dict[str, Any]:
     if n and not force:
         return {"reservations": n, "seeded": False}
     df = pd.read_csv(config.HOTELS_CSV)
-    names = random.Random(42)  # display names only - nothing security-relevant comes from this generator
+    names = random.Random(42)  # noqa: S311 - display names only; PINs come from `secrets`
     today = time.strftime("%Y-%m-%d")
+    # A fixed +10 years would leave no upcoming stays after Aug 2027; shifting relative to today keeps the demo alive.
+    shift = int(time.strftime("%Y")) + 1 - int(df.arrival_date_year.max())
     rows = []
     for i, r in enumerate(df.itertuples(index=False)):
         nights = int(r.stays_in_weekend_nights + r.stays_in_week_nights)
-        date = f"{int(r.arrival_date_year) + 10:04d}-{MONTHS[r.arrival_date_month]:02d}-{int(r.arrival_date_day_of_month):02d}"
+        date = f"{int(r.arrival_date_year) + shift:04d}-{MONTHS[r.arrival_date_month]:02d}-{int(r.arrival_date_day_of_month):02d}"
         children = 0 if pd.isna(r.children) else int(r.children)
         status = r.reservation_status
         if date >= today:  # stays in the (shifted) future have not happened yet
             status = "Canceled" if r.is_canceled else "Confirmed"
         country = "UNK" if pd.isna(r.country) else str(r.country)
         salt = secrets.token_hex(8)
-        rows.append((f"R{i + 100000}", "H1" if r.hotel == "Resort Hotel" else "H2",
-                     f"{names.choice(FIRST)} {names.choice(LAST)}", country, date, nights, int(r.adults), children,
-                     r.deposit_type, TERMS[r.deposit_type], float(r.adr), round(float(r.adr) * max(nights, 1), 2),
-                     r.market_segment, r.distribution_channel, status, salt, hash_pin(new_pin(), salt)))
+        rows.append(
+            (
+                f"R{i + 100000}",
+                "H1" if r.hotel == "Resort Hotel" else "H2",
+                f"{names.choice(FIRST)} {names.choice(LAST)}",
+                country,
+                date,
+                nights,
+                int(r.adults),
+                children,
+                r.deposit_type,
+                TERMS[r.deposit_type],
+                float(r.adr),
+                round(float(r.adr) * max(nights, 1), 2),
+                r.market_segment,
+                r.distribution_channel,
+                status,
+                salt,
+                hash_pin(new_pin(), salt),
+            )
+        )
     with tx() as t:
         t.execute("DELETE FROM reservations")
         t.execute("DELETE FROM properties")
-        t.executemany("INSERT INTO reservations (id, property_id, guest_name, guest_country, arrival_date, nights, adults, "
-                      "children, deposit_type, payment_terms, adr, total_eur, market_segment, channel, status, pin_salt, "
-                      "pin_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+        t.executemany(
+            "INSERT INTO reservations (id, property_id, guest_name, guest_country, arrival_date, nights, adults, "
+            "children, deposit_type, payment_terms, adr, total_eur, market_segment, channel, status, pin_salt, "
+            "pin_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            rows,
+        )
         for pid, name, city, country, domains in PROPERTIES:
-            t.execute("INSERT INTO properties (id, name, city, country, domains) VALUES (?,?,?,?,?)",
-                      (pid, name, city, country, json.dumps(domains)))
+            t.execute(
+                "INSERT INTO properties (id, name, city, country, domains) VALUES (?,?,?,?,?)",
+                (pid, name, city, country, json.dumps(domains)),
+            )
     return {"reservations": len(rows), "seeded": True}
 
 
@@ -216,9 +295,14 @@ def dataset_facts() -> dict[str, Any]:
     by_prop = {r[0]: r[1] for r in c.execute("SELECT property_id, COUNT(*) FROM reservations GROUP BY 1")}
     countries = c.execute("SELECT COUNT(DISTINCT guest_country) FROM reservations").fetchone()[0]
     online = c.execute("SELECT COUNT(*) FROM reservations WHERE market_segment='Online TA'").fetchone()[0]
-    return {"reservations": total, "by_payment_terms": by_terms, "by_property": by_prop, "guest_countries": countries,
-            "share_pay_at_property": round(by_terms.get("pay_at_property", 0) / total, 4) if total else 0,
-            "share_online_travel_agent": round(online / total, 4) if total else 0}
+    return {
+        "reservations": total,
+        "by_payment_terms": by_terms,
+        "by_property": by_prop,
+        "guest_countries": countries,
+        "share_pay_at_property": round(by_terms.get("pay_at_property", 0) / total, 4) if total else 0,
+        "share_online_travel_agent": round(online / total, 4) if total else 0,
+    }
 
 
 # ----------------------------------------------------------------------------------------------
@@ -302,5 +386,5 @@ def reset_runtime() -> None:
     """Demo only: clear sessions, messages, cases and notices, keeping reservations and the audit log."""
     with tx() as t:
         for tbl in ("sessions", "reservation_reads", "messages", "guest_notices", "guest_attempts", "cases", "idempotency"):
-            t.execute(f"DELETE FROM {tbl}")
+            t.execute(f"DELETE FROM {tbl}")  # noqa: S608 - tbl comes from the fixed tuple above, never from input
         t.execute("UPDATE properties SET payout_frozen_until=0, password_reset_required=0")

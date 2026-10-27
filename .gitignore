@@ -6,3 +6,6 @@ models/
 data/raw/
 data/snapshots/
 .coverage
+coverage.json
+.mypy_cache/
+.ruff_cache/

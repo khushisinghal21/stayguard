@@ -73,18 +73,24 @@ a separate 115-message golden + red-team set, and synthetic login telemetry (rea
 ## Run it
 
 ```bash
-pip install -r requirements.txt
-bash scripts/fetch_data.sh            # only if data/raw is empty (the zip already includes it)
-python -m eval.evaluate               # trains both models, writes eval/report.md + report.json (~2 min)
-uvicorn stayguard.api:app --port 8000 # open http://localhost:8000
-pytest -q                             # 20 tests
+pip install --require-hashes -r requirements.lock && pip install --no-deps -e .   # pinned, hash-checked
+bash scripts/fetch_data.sh                    # real datasets into data/raw (+ data/MANIFEST.json)
+python -m eval.evaluate                       # trains both models, writes eval/report.md + report.json (~3 min)
+STAYGUARD_DEMO_MODE=1 uvicorn stayguard.api:app --port 8000   # console at http://localhost:8000
 ```
 
-Or `docker compose up --build`, then open http://localhost:8000.
+Or `docker compose up --build` (demo mode on), then open http://localhost:8000.
+
+**Demo vs production mode.** Production mode is the default: the platform-facing endpoints need an `X-API-Key`
+(`STAYGUARD_API_KEY`), and without a configured key they refuse to serve instead of running open. Demo mode
+(`STAYGUARD_DEMO_MODE=1`) adds the console's demo endpoints (issuing a guest PIN, the scripted attack, samples) and,
+if no key is set, lets the console call everything without one. Never run demo mode on a public host.
 
 **Optional: real LLM judges.** Set `STAYGUARD_ANTHROPIC_API_KEY` (and optionally `STAYGUARD_LLM_MODEL`). Without
 it a deterministic offline judge runs in their place, so everything works with no key and no network; the UI
 says which one is active.
+
+Development: see `CONTRIBUTING.md` (`make lint types test`). Agents: see `CLAUDE.md` for the invariants.
 
 ## The console (http://localhost:8000)
 

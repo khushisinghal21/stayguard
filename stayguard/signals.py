@@ -4,10 +4,12 @@ prompt-injection guardrails.
 Every detector returns evidence as exact substrings of the ORIGINAL message, so anything we show an
 analyst (or hand to an LLM judge as a quote) can be verified against the raw text.
 """
+
 from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .domains import is_public_host
@@ -17,11 +19,37 @@ from .domains import is_public_host
 # ----------------------------------------------------------------------------------------------
 ZERO_WIDTH = re.compile("[​-‏⁠﻿­]")
 # Cyrillic / Greek letters that look Latin. Used to unmask "Вооking" style spoofing.
-CONFUSABLES = str.maketrans({
-    "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "у": "y", "х": "x", "і": "i", "ј": "j",
-    "В": "B", "К": "K", "М": "M", "Н": "H", "О": "O", "Р": "P", "С": "C", "Т": "T", "Х": "X",
-    "ο": "o", "α": "a", "ν": "v", "ρ": "p", "Ο": "O", "Α": "A", "Β": "B", "Ε": "E", "Κ": "K",
-})
+CONFUSABLES = str.maketrans(
+    {
+        "а": "a",
+        "е": "e",
+        "о": "o",
+        "р": "p",
+        "с": "c",
+        "у": "y",
+        "х": "x",
+        "і": "i",
+        "ј": "j",
+        "В": "B",
+        "К": "K",
+        "М": "M",
+        "Н": "H",
+        "О": "O",
+        "Р": "P",
+        "С": "C",
+        "Т": "T",
+        "Х": "X",
+        "ο": "o",
+        "α": "a",
+        "ν": "v",
+        "ρ": "p",
+        "Ο": "O",
+        "Α": "A",
+        "Β": "B",
+        "Ε": "E",
+        "Κ": "K",
+    }
+)
 
 
 def normalise(text: str) -> str:
@@ -51,120 +79,299 @@ def has_mixed_script_word(text: str) -> list[str]:
 # ----------------------------------------------------------------------------------------------
 # Lexicons
 # ----------------------------------------------------------------------------------------------
-def _rx(*parts: str) -> re.Pattern:
+def _rx(*parts: str) -> re.Pattern[str]:
     return re.compile("|".join(f"(?:{p})" for p in parts), re.IGNORECASE)
 
 
 # Words that talk about money at all.
 PAY_TERMS = _rx(
-    r"\bpay(?:ment|ments|ing)?\b", r"\bprepay(?:ment)?\b", r"\bdeposit\b", r"\bcharge[ds]?\b",
-    r"\bamount due\b", r"\boutstanding (?:balance|amount)\b", r"\bbalance\b", r"\bsettle\b", r"\bfee\b",
-    r"[€$£₹]\s?\d[\d,.]*", r"\b(?:eur|usd|gbp|inr|rs\.?)\s?\d[\d,.]*", r"\b\d[\d,.]*\s?(?:eur|euros?|usd|rupees|rs)\b",
-    r"भुगतान", r"पेमेंट", r"पैसे", r"रुपये", r"राशि",
-    r"\bpaise\b", r"\bpaisa\b", r"\bbhugtan\b", r"\bpayment\s?kar", r"\bpay\s?kar",
-    r"\bpago\b", r"\bpagar\b", r"\babonar\b", r"\bpagamento\b", r"\bpaiement\b", r"\bpayer\b", r"\brégler\b",
-    r"\bzahlung\b", r"\bbezahlen\b", r"\bpagare\b",
+    r"\bpay(?:ment|ments|ing)?\b",
+    r"\bprepay(?:ment)?\b",
+    r"\bdeposit\b",
+    r"\bcharge[ds]?\b",
+    r"\bamount due\b",
+    r"\boutstanding (?:balance|amount)\b",
+    r"\bbalance\b",
+    r"\bsettle\b",
+    r"\bfee\b",
+    r"[€$£₹]\s?\d[\d,.]*",
+    r"\b(?:eur|usd|gbp|inr|rs\.?)\s?\d[\d,.]*",
+    r"\b\d[\d,.]*\s?(?:eur|euros?|usd|rupees|rs)\b",
+    r"भुगतान",
+    r"पेमेंट",
+    r"पैसे",
+    r"रुपये",
+    r"राशि",
+    r"\bpaise\b",
+    r"\bpaisa\b",
+    r"\bbhugtan\b",
+    r"\bpayment\s?kar",
+    r"\bpay\s?kar",
+    r"\bpago\b",
+    r"\bpagar\b",
+    r"\babonar\b",
+    r"\bpagamento\b",
+    r"\bpaiement\b",
+    r"\bpayer\b",
+    r"\brégler\b",
+    r"\bzahlung\b",
+    r"\bbezahlen\b",
+    r"\bpagare\b",
 )
 
 # Requests for card or bank data. A hotel never needs these over chat.
 CARD_DATA = _rx(
-    r"card (?:details|number|info(?:rmation)?|data)", r"(?:credit|debit|bank) card", r"\bcvv\b", r"\bcvc\b",
-    r"security code", r"expiry date", r"bank (?:details|account details|information)", r"\biban\b", r"\bswift\b",
-    r"re-?enter (?:your )?(?:card|payment)", r"verify (?:your )?(?:card|payment (?:method|details))",
-    r"card verification", r"update (?:your )?(?:card|payment (?:method|details|information))",
-    r"card (?:confirmation|check|validation|verification test)", r"(?:confirm|validate|re-?validate|check) (?:your |the )?(?:payment )?card",
-    r"enter (?:your |the )?card", r"card (?:used|you used) for the (?:booking|reservation)",
+    r"card (?:details|number|info(?:rmation)?|data)",
+    r"(?:credit|debit|bank) card",
+    r"\bcvv\b",
+    r"\bcvc\b",
+    r"security code",
+    r"expiry date",
+    r"bank (?:details|account details|information)",
+    r"\biban\b",
+    r"\bswift\b",
+    r"re-?enter (?:your )?(?:card|payment)",
+    r"verify (?:your )?(?:card|payment (?:method|details))",
+    r"card verification",
+    r"update (?:your )?(?:card|payment (?:method|details|information))",
+    r"card (?:confirmation|check|validation|verification test)",
+    r"(?:confirm|validate|re-?validate|check) (?:your |the )?(?:payment )?card",
+    r"enter (?:your |the )?card",
+    r"card (?:used|you used) for the (?:booking|reservation)",
     r"(?:confirm|validat|re-?validat|check|verify|verifi)\w* (?:your |the )?(?:payment |credit |debit )?card",
-    r"(?:confirm|verific|valid)\w* (?:o |el |la |os |los )?(?:seu |su )?(?:cartão|tarjeta)", r"(?:vérifi|confirm|valid)\w* (?:votre |la )?carte",
-    r"(?:verific|conferm|convalid)\w* (?:la )?(?:sua )?carta", r"karte\w* (?:bestätigen|verifizieren|prüfen)",
-    r"कार्ड (?:की )?(?:जानकारी|डिटेल्स|नंबर)", r"बैंक (?:की )?(?:जानकारी|डिटेल्स)",
-    r"card (?:ki )?details", r"card number bhej", r"card ki jankari",
-    r"datos de (?:la )?tarjeta", r"número de (?:la )?tarjeta", r"dados do cartão", r"número do cartão",
-    r"coordonnées bancaires", r"numéro de carte", r"kartendaten", r"kreditkartendaten", r"dati della carta",
+    r"(?:confirm|verific|valid)\w* (?:o |el |la |os |los )?(?:seu |su )?(?:cartão|tarjeta)",
+    r"(?:vérifi|confirm|valid)\w* (?:votre |la )?carte",
+    r"(?:verific|conferm|convalid)\w* (?:la )?(?:sua )?carta",
+    r"karte\w* (?:bestätigen|verifizieren|prüfen)",
+    r"कार्ड (?:की )?(?:जानकारी|डिटेल्स|नंबर)",
+    r"बैंक (?:की )?(?:जानकारी|डिटेल्स)",
+    r"card (?:ki )?details",
+    r"card number bhej",
+    r"card ki jankari",
+    r"datos de (?:la )?tarjeta",
+    r"número de (?:la )?tarjeta",
+    r"dados do cartão",
+    r"número do cartão",
+    r"coordonnées bancaires",
+    r"numéro de carte",
+    r"kartendaten",
+    r"kreditkartendaten",
+    r"dati della carta",
 )
 
 # Payment rails that move money off-platform with no buyer protection.
 OFF_PLATFORM_PAYMENT = _rx(
-    r"bank transfer", r"wire (?:transfer|the|it|money)?", r"\bwestern union\b", r"\bmoneygram\b", r"gift ?cards?",
-    r"\bcrypto\b", r"\bbitcoin\b", r"\busdt\b", r"\bupi\b", r"\bpaytm\b", r"\bgpay\b", r"\bphonepe\b",
-    r"\b[\w.-]+@(?:ok\w+|ybl|paytm|upi|ibl|axl)\b", r"transfer (?:the )?(?:money|amount|payment|funds)",
-    r"ट्रांसफर", r"यूपीआई", r"transfer kar", r"jama kar", r"जमा कर",
-    r"transferencia", r"transferência", r"virement", r"überweisung", r"bonifico",
+    r"bank transfer",
+    r"wire (?:transfer|the|it|money)?",
+    r"\bwestern union\b",
+    r"\bmoneygram\b",
+    r"gift ?cards?",
+    r"\bcrypto\b",
+    r"\bbitcoin\b",
+    r"\busdt\b",
+    r"\bupi\b",
+    r"\bpaytm\b",
+    r"\bgpay\b",
+    r"\bphonepe\b",
+    r"\b[\w.-]+@(?:ok\w+|ybl|paytm|upi|ibl|axl)\b",
+    r"transfer (?:the )?(?:money|amount|payment|funds)",
+    r"ट्रांसफर",
+    r"यूपीआई",
+    r"transfer kar",
+    r"jama kar",
+    r"जमा कर",
+    r"transferencia",
+    r"transferência",
+    r"virement",
+    r"überweisung",
+    r"bonifico",
 )
 
 # Moving the conversation or payment away from the platform.
 OFF_PLATFORM_CONTACT = _rx(
-    r"\bwhats\s?app\b", r"\btelegram\b", r"\bwa\.me\b", r"\bsignal app\b", r"personal (?:account|email|number)",
-    r"outside (?:of )?(?:booking|the (?:platform|app))", r"(?:is|isn'?t|not) (?:connected|linked) (?:to|with)",
+    r"\bwhats\s?app\b",
+    r"\btelegram\b",
+    r"\bwa\.me\b",
+    r"\bsignal app\b",
+    r"personal (?:account|email|number)",
+    r"outside (?:of )?(?:booking|the (?:platform|app))",
+    r"(?:is|isn'?t|not) (?:connected|linked) (?:to|with)",
     r"(?:another|different|separate|our own) (?:website|site|link|portal|payment page)",
-    r"directly to (?:our|my) (?:bank|account)", r"call (?:me|us) (?:on|at) \+?\d",
-    r"bahar se", r"alag (?:website|link)",
+    r"directly to (?:our|my) (?:bank|account)",
+    r"call (?:me|us) (?:on|at) \+?\d",
+    r"bahar se",
+    r"alag (?:website|link)",
 )
 
 URGENCY = _rx(
-    r"within \d+\s?(?:hours?|hrs?|h|minutes?|mins?)\b", r"\bin \d+\s?(?:hours?|hrs?|minutes?)\b", r"\b(?:12|24|48) ?(?:hours?|hrs?|h)\b",
-    r"\bimmediately\b", r"\burgent(?:ly)?\b", r"\basap\b", r"right away", r"as soon as possible", r"\btoday\b",
-    r"(?:will|would) be (?:automatically )?cancell?ed", r"cancel(?:l)?(?:ing|ation of)? your (?:booking|reservation|stay)",
-    r"last chance", r"final (?:notice|reminder|warning)", r"failure to", r"\botherwise\b",
-    r"तुरंत", r"अभी", r"रद्द", r"\babhi\b", r"\bturant\b", r"\bjaldi\b", r"cancel ho jaye\w*", r"cancel kar d", r"\bwarna\b",
-    r"cancelada", r"urgente", r"inmediatamente", r"imediatamente", r"annulée", r"immédiatement",
-    r"storniert", r"dringend", r"\bsofort\b", r"cancellata", r"immediatamente",
+    r"within \d+\s?(?:hours?|hrs?|h|minutes?|mins?)\b",
+    r"\bin \d+\s?(?:hours?|hrs?|minutes?)\b",
+    r"\b(?:12|24|48) ?(?:hours?|hrs?|h)\b",
+    r"\bimmediately\b",
+    r"\burgent(?:ly)?\b",
+    r"\basap\b",
+    r"right away",
+    r"as soon as possible",
+    r"\btoday\b",
+    r"(?:will|would) be (?:automatically )?cancell?ed",
+    r"cancel(?:l)?(?:ing|ation of)? your (?:booking|reservation|stay)",
+    r"last chance",
+    r"final (?:notice|reminder|warning)",
+    r"failure to",
+    r"\botherwise\b",
+    r"तुरंत",
+    r"अभी",
+    r"रद्द",
+    r"\babhi\b",
+    r"\bturant\b",
+    r"\bjaldi\b",
+    r"cancel ho jaye\w*",
+    r"cancel kar d",
+    r"\bwarna\b",
+    r"cancelada",
+    r"urgente",
+    r"inmediatamente",
+    r"imediatamente",
+    r"annulée",
+    r"immédiatement",
+    r"storniert",
+    r"dringend",
+    r"\bsofort\b",
+    r"cancellata",
+    r"immediatamente",
 )
 
 VERIFY_LURE = _rx(
-    r"\bverif(?:y|ication|ied)\b", r"confirm (?:your )?(?:booking|reservation|identity|card|details|payment)",
-    r"security check", r"\bvalidat(?:e|ion)\b", r"re-?confirm", r"suspicious activity", r"unauthori[sz]ed access",
-    r"सत्यापन", r"verify kar", r"confirm kar", r"verificar", r"vérifier", r"bestätigen", r"verificare",
+    r"\bverif(?:y|ication|ied)\b",
+    r"confirm (?:your )?(?:booking|reservation|identity|card|details|payment)",
+    r"security check",
+    r"\bvalidat(?:e|ion)\b",
+    r"re-?confirm",
+    r"suspicious activity",
+    r"unauthori[sz]ed access",
+    r"सत्यापन",
+    r"verify kar",
+    r"confirm kar",
+    r"verificar",
+    r"vérifier",
+    r"bestätigen",
+    r"verificare",
 )
 
 IMPERSONATION = _rx(
     r"booking\.?com (?:team|support|security|customer (?:service|support)|partner (?:help|support))",
-    r"on behalf of booking", r"booking (?:security|support) (?:team|department)",
+    r"on behalf of booking",
+    r"booking (?:security|support) (?:team|department)",
 )
 
 OVERPAYMENT = _rx(
-    r"over-?paid", r"over-?payment", r"paid (?:too much|extra|more than)", r"sent (?:you )?(?:extra|more|too much|the wrong amount)",
-    r"refund (?:me )?the (?:difference|excess|extra|balance|remaining)", r"return the (?:excess|extra|difference|rest)",
-    r"(?:my|our) (?:assistant|secretary|travel agent|company) (?:paid|sent|made)", r"by mistake",
-    r"wire (?:back|the (?:rest|difference|balance))", r"send (?:back|the (?:rest|difference))",
+    r"over-?paid",
+    r"over-?payment",
+    r"paid (?:too much|extra|more than)",
+    r"sent (?:you )?(?:extra|more|too much|the wrong amount)",
+    r"refund (?:me )?the (?:difference|excess|extra|balance|remaining)",
+    r"return the (?:excess|extra|difference|rest)",
+    r"(?:my|our) (?:assistant|secretary|travel agent|company) (?:paid|sent|made)",
+    r"by mistake",
+    r"wire (?:back|the (?:rest|difference|balance))",
+    r"send (?:back|the (?:rest|difference))",
 )
 
 # Words that make a sentence an instruction to act, as opposed to a mention.
 ACTION = _rx(
-    r"\bplease\b", r"\bkindly\b", r"\bmust\b", r"\bneed to\b", r"\bneeds to\b", r"\brequired\b", r"\bhave to\b", r"\bclick\b",
-    r"\bcomplete\b", r"\bmake (?:a |the )?payment\b", r"\bpay now\b", r"\bpay (?:the|this|your)\b", r"\bcan you pay\b", r"\bsend\b", r"\bprovide\b",
-    r"\bfollow (?:the|this) link\b", r"\bvia (?:the|this) link\b", r"\bbelow\b", r"\bhere:\s", r"\bshould\b",
-    r"कृपया", r"करें", r"\bkaro\b", r"\bkarein\b", r"\bkariye\b", r"\bbhejo\b", r"\bbhejein\b", r"\bkar do\b",
-    r"por favor", r"debe", r"deve", r"veuillez", r"bitte", r"si prega",
+    r"\bplease\b",
+    r"\bkindly\b",
+    r"\bmust\b",
+    r"\bneed to\b",
+    r"\bneeds to\b",
+    r"\brequired\b",
+    r"\bhave to\b",
+    r"\bclick\b",
+    r"\bcomplete\b",
+    r"\bmake (?:a |the )?payment\b",
+    r"\bpay now\b",
+    r"\bpay (?:the|this|your)\b",
+    r"\bcan you pay\b",
+    r"\bsend\b",
+    r"\bprovide\b",
+    r"\bfollow (?:the|this) link\b",
+    r"\bvia (?:the|this) link\b",
+    r"\bbelow\b",
+    r"\bhere:\s",
+    r"\bshould\b",
+    r"कृपया",
+    r"करें",
+    r"\bkaro\b",
+    r"\bkarein\b",
+    r"\bkariye\b",
+    r"\bbhejo\b",
+    r"\bbhejein\b",
+    r"\bkar do\b",
+    r"por favor",
+    r"debe",
+    r"deve",
+    r"veuillez",
+    r"bitte",
+    r"si prega",
 )
 
 # "... to confirm / secure / keep your booking": payment presented as the condition for keeping the stay.
-GOAL = _rx(r"to (?:confirm|secure|guarantee|keep|hold|avoid|unlock|validate|verify|complete|reactivate|release)",
-           r"(?:confirm|guarantee|secure) (?:your|the) (?:booking|reservation|room|stay)",
-           r"ke liye", r"के लिए", r"para (?:confirmar|garantir|garantizar|manter|mantener)", r"pour (?:confirmer|garantir)",
-           r"um (?:ihre|die) buchung", r"per (?:confermare|garantire)")
+GOAL = _rx(
+    r"to (?:confirm|secure|guarantee|keep|hold|avoid|unlock|validate|verify|complete|reactivate|release)",
+    r"(?:confirm|guarantee|secure) (?:your|the) (?:booking|reservation|room|stay)",
+    r"ke liye",
+    r"के लिए",
+    r"para (?:confirmar|garantir|garantizar|manter|mantener)",
+    r"pour (?:confirmer|garantir)",
+    r"um (?:ihre|die) buchung",
+    r"per (?:confermare|garantire)",
+)
 
 # Sentences that reassure ("you pay at the hotel", "nothing to pay now") are not asks.
 REASSURE = _rx(
     r"pa(?:y|id|yable) (?:at|on|in) (?:the )?(?:property|hotel|check-?in|reception|arrival|front desk|desk)",
-    r"pa(?:y|id) (?:the )?(?:driver|guide|taxi|restaurant)", r"(?:paid|payable|collected|taken) (?:locally|on site|on arrival)",
-    r"(?:no|nothing to) (?:pay|payment|prepayment|deposit)", r"(?:not|never) (?:be )?(?:charged|ask)",
-    r"no (?:payment|prepayment|deposit) (?:is )?(?:needed|required|necessary)", r"won'?t (?:be )?charge",
+    r"pa(?:y|id) (?:the )?(?:driver|guide|taxi|restaurant)",
+    r"(?:paid|payable|collected|taken) (?:locally|on site|on arrival)",
+    r"(?:no|nothing to) (?:pay|payment|prepayment|deposit)",
+    r"(?:not|never) (?:be )?(?:charged|ask)",
+    r"no (?:payment|prepayment|deposit) (?:is )?(?:needed|required|necessary)",
+    r"won'?t (?:be )?charge",
     r"payment (?:is|will be) (?:taken|collected|made) (?:at|on) (?:check-?in|arrival|the property)",
-    r"never (?:ask|take|request|need)(?:s)? (?:you )?(?:for )?", r"(?:don'?t|do not) (?:need to )?(?:share|send|give)", r"already (?:been )?paid", r"fully paid", r"(?:in|through|via|on) (?:the )?booking\.?com (?:app|website|account|extranet)",
-    r"pago en el (?:hotel|alojamiento)", r"paiement (?:à|sur) place", r"zahlung (?:vor ort|im hotel)",
-    r"pagamento (?:no hotel|na chegada)", r"pagamento (?:é|e) feito no hotel", r"pago se (?:hace|realiza) en el",
-    r"booking\.?com se ho (?:chuka|gaya)", r"(?:ho chuka|already) (?:hai )?.{0,20}(?:kuch )?pay nahi", r"pay nahi karna", r"check-?in (?:pe|par) (?:hi )?pay", r"hotel (?:pe|par) (?:hi )?pay",
+    r"never (?:ask|take|request|need)(?:s)? (?:you )?(?:for )?",
+    r"(?:don'?t|do not) (?:need to )?(?:share|send|give)",
+    r"already (?:been )?paid",
+    r"fully paid",
+    r"(?:in|through|via|on) (?:the )?booking\.?com (?:app|website|account|extranet)",
+    r"pago en el (?:hotel|alojamiento)",
+    r"paiement (?:à|sur) place",
+    r"zahlung (?:vor ort|im hotel)",
+    r"pagamento (?:no hotel|na chegada)",
+    r"pagamento (?:é|e) feito no hotel",
+    r"pago se (?:hace|realiza) en el",
+    r"booking\.?com se ho (?:chuka|gaya)",
+    r"(?:ho chuka|already) (?:hai )?.{0,20}(?:kuch )?pay nahi",
+    r"pay nahi karna",
+    r"check-?in (?:pe|par) (?:hi )?pay",
+    r"hotel (?:pe|par) (?:hi )?pay",
 )
 
 INJECTION = _rx(
     r"ignore (?:all |any |the )?(?:previous|prior|above|earlier|preceding) (?:instructions|rules|messages|prompts?)",
-    r"disregard (?:all |any |the )?(?:previous|prior|above|earlier)", r"system prompt", r"you are now\b",
-    r"(?:classify|mark|label|treat|flag) (?:this|it|the message) as (?:safe|legit(?:imate)?|genuine|not (?:spam|a scam|fraud)|benign)",
-    r"(?:this|the) message (?:is|has been) (?:verified|approved|whitelisted|safe)", r"\bas an ai\b", r"developer mode",
-    r"</?\s*(?:system|assistant|user|instructions?)\s*>", r"\[/?INST\]", r"<\|", r"BEGIN (?:SYSTEM|ADMIN)",
+    r"disregard (?:all |any |the )?(?:previous|prior|above|earlier)",
+    r"system prompt",
+    r"you are now\b",
+    r"(?:classify|mark|label|treat|flag) (?:this|it|the message) as "
+    r"(?:safe|legit(?:imate)?|genuine|not (?:spam|a scam|fraud)|benign)",
+    r"(?:this|the) message (?:is|has been) (?:verified|approved|whitelisted|safe)",
+    r"\bas an ai\b",
+    r"developer mode",
+    r"</?\s*(?:system|assistant|user|instructions?)\s*>",
+    r"\[/?INST\]",
+    r"<\|",
+    r"BEGIN (?:SYSTEM|ADMIN)",
     r"(?:note|message) (?:to|for) (?:the )?(?:ai|model|llm|classifier|filter|moderator|reviewer)",
-    r"pichle (?:sab )?instructions? ignore", r"पिछले निर्देश",
+    r"pichle (?:sab )?instructions? ignore",
+    r"पिछले निर्देश",
 )
 
 # Candidate links: anything with a scheme or www., or a dotted name. Scheme-less candidates are then validated
@@ -205,7 +412,7 @@ def mask_pii(text: str) -> tuple[str, list[str]]:
     """Replace card numbers (Luhn-checked), IBANs, UPI IDs, e-mails, ID numbers and phones with tokens."""
     kinds: list[str] = []
 
-    def card_sub(m: re.Match) -> str:
+    def card_sub(m: re.Match[str]) -> str:
         digits = re.sub(r"\D", "", m.group())
         if 13 <= len(digits) <= 19 and _luhn_ok(digits):
             kinds.append("CARD")
@@ -227,7 +434,7 @@ SENTENCE_SPLIT = re.compile(r"(?<=[.!?।])\s+|\n+")
 
 @dataclass
 class TextSignals:
-    money_ask: bool = False       # strong: pay + instruction + (link | deadline | goal | verification | off-platform)
+    money_ask: bool = False  # strong: pay + instruction + (link | deadline | goal | verification | off-platform)
     soft_money_ask: bool = False  # pay + instruction only ("you can pay the driver")
     money_mention: bool = False
     card_data: bool = False
@@ -239,7 +446,7 @@ class TextSignals:
     overpayment: bool = False
     injection: bool = False
     hidden_chars: bool = False
-    obfuscated: bool = False      # leetspeak / spaced letters hid a signal
+    obfuscated: bool = False  # leetspeak / spaced letters hid a signal
     mixed_script: list[str] = field(default_factory=list)
     urls: list[str] = field(default_factory=list)
     evidence: dict[str, list[str]] = field(default_factory=dict)
@@ -253,15 +460,26 @@ class TextSignals:
 
     @property
     def scam_flags(self) -> int:
-        return sum([self.money_ask, self.card_data, self.off_platform_payment, self.off_platform_contact,
-                    self.urgency, self.verify_lure, self.impersonation, self.injection, bool(self.mixed_script),
-                    self.obfuscated])
+        return sum(
+            [
+                self.money_ask,
+                self.card_data,
+                self.off_platform_payment,
+                self.off_platform_contact,
+                self.urgency,
+                self.verify_lure,
+                self.impersonation,
+                self.injection,
+                bool(self.mixed_script),
+                self.obfuscated,
+            ]
+        )
 
 
 BRAND_MENTIONS = {"booking.com", "airbnb.com", "agoda.com", "expedia.com", "priceline.com", "kayak.com", "hotels.com"}
 
 
-def _accept_candidate(m: re.Match, text: str) -> str | None:
+def _accept_candidate(m: re.Match[str], text: str) -> str | None:
     u = m.group().rstrip(".,;:!?")
     if not u:
         return None
@@ -293,7 +511,7 @@ def _links(text: str) -> list[str]:
     return out
 
 
-def sub_links(text: str, repl) -> str:
+def sub_links(text: str, repl: str | Callable[[str], str]) -> str:
     """Replace every accepted link with repl(link) (a string or a callable)."""
     out, pos = [], 0
     for m in URL_RX.finditer(text):
@@ -302,14 +520,14 @@ def sub_links(text: str, repl) -> str:
         u = _accept_candidate(m, text)
         if not u:
             continue
-        out.append(text[pos:m.start()])
+        out.append(text[pos : m.start()])
         out.append(repl(u) if callable(repl) else repl)
         pos = m.start() + len(u)
     out.append(text[pos:])
     return "".join(out)
 
 
-def _spans(rx: re.Pattern, text: str) -> list[str]:
+def _spans(rx: re.Pattern[str], text: str) -> list[str]:
     return [m.group().strip() for m in rx.finditer(text) if m.group().strip()]
 
 
@@ -332,8 +550,19 @@ def deobfuscate(t: str) -> str:
     return re.sub(r"\S+", lambda m: fix(m.group()), t)
 
 
-BOOL_FLAGS = ("money_ask", "soft_money_ask", "money_mention", "card_data", "off_platform_payment", "off_platform_contact",
-              "urgency", "verify_lure", "impersonation", "overpayment", "injection")
+BOOL_FLAGS = (
+    "money_ask",
+    "soft_money_ask",
+    "money_mention",
+    "card_data",
+    "off_platform_payment",
+    "off_platform_contact",
+    "urgency",
+    "verify_lure",
+    "impersonation",
+    "overpayment",
+    "injection",
+)
 
 
 def extract(text: str) -> TextSignals:
@@ -361,10 +590,16 @@ def extract(text: str) -> TextSignals:
 def _extract(t: str) -> TextSignals:
     s = TextSignals()
     s.urls = _links(t)
-    for kind, rx in (("card_data", CARD_DATA), ("off_platform_payment", OFF_PLATFORM_PAYMENT),
-                     ("off_platform_contact", OFF_PLATFORM_CONTACT), ("urgency", URGENCY),
-                     ("verify_lure", VERIFY_LURE), ("impersonation", IMPERSONATION),
-                     ("overpayment", OVERPAYMENT), ("injection", INJECTION)):
+    for kind, rx in (
+        ("card_data", CARD_DATA),
+        ("off_platform_payment", OFF_PLATFORM_PAYMENT),
+        ("off_platform_contact", OFF_PLATFORM_CONTACT),
+        ("urgency", URGENCY),
+        ("verify_lure", VERIFY_LURE),
+        ("impersonation", IMPERSONATION),
+        ("overpayment", OVERPAYMENT),
+        ("injection", INJECTION),
+    ):
         spans = _spans(rx, t)
         setattr(s, kind, bool(spans))
         s.add(kind, spans)
@@ -389,8 +624,14 @@ def _extract(t: str) -> TextSignals:
         link_here = bool(_links(sent))
         if ACTION.search(sent) or link_here:
             s.soft_money_ask = True
-            strong = (link_here or bool(URGENCY.search(sent)) or bool(GOAL.search(sent))
-                      or bool(s.urls) or s.verify_lure or s.off_platform_contact)
+            strong = (
+                link_here
+                or bool(URGENCY.search(sent))
+                or bool(GOAL.search(sent))
+                or bool(s.urls)
+                or s.verify_lure
+                or s.off_platform_contact
+            )
             if strong:
                 s.money_ask = True
                 s.add("money_ask", pay + _spans(ACTION, sent)[:2] + _spans(GOAL, sent)[:1])
@@ -398,7 +639,13 @@ def _extract(t: str) -> TextSignals:
                 s.add("soft_money_ask", pay)
     # Message-level fallback: "A guarantee payment of EUR 214 is pending. Complete it now: <link>" spreads the
     # money words and the instruction across sentences.
-    if s.money_mention and not s.money_ask and s.urls and unreassured_pay and (ACTION.search(t) or GOAL.search(t) or URGENCY.search(t)):
+    if (
+        s.money_mention
+        and not s.money_ask
+        and s.urls
+        and unreassured_pay
+        and (ACTION.search(t) or GOAL.search(t) or URGENCY.search(t))
+    ):
         s.money_ask = s.soft_money_ask = True
         s.add("money_ask", unreassured_pay[:3])
     s.card_data, s.off_platform_payment = bool(card_spans), bool(rail_spans)
@@ -415,12 +662,19 @@ def detect_language(text: str) -> str:
     if re.search(r"[ऀ-ॿ]", text):
         return "hi"
     low = text.lower()
-    hinglish = sum(w in low.split() for w in ("hai", "karo", "kar", "aapka", "aapki", "apna", "nahi", "bhejo", "jaldi", "abhi", "warna", "ki", "ke", "ho"))
+    hinglish = sum(
+        w in low.split()
+        for w in ("hai", "karo", "kar", "aapka", "aapki", "apna", "nahi", "bhejo", "jaldi", "abhi", "warna", "ki", "ke", "ho")
+    )
     if hinglish >= 2:
         return "hinglish"
-    for lang, words in (("es", (" el ", " la ", " su ", " por ", " reserva")), ("pt", (" você", " sua ", " reserva", " não ")),
-                        ("fr", (" vous ", " votre ", " réservation")), ("de", (" ihre ", " sie ", " buchung")),
-                        ("it", (" la sua ", " prenotazione", " vostra "))):
+    for lang, words in (
+        ("es", (" el ", " la ", " su ", " por ", " reserva")),
+        ("pt", (" você", " sua ", " reserva", " não ")),
+        ("fr", (" vous ", " votre ", " réservation")),
+        ("de", (" ihre ", " sie ", " buchung")),
+        ("it", (" la sua ", " prenotazione", " vostra ")),
+    ):
         if sum(w in f" {low} " for w in words) >= 2:
             return lang
     return "en"

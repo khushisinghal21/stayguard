@@ -11,6 +11,7 @@ Writes eval/calibration.json (thresholds, reliability bins) and eval/reliability
 
 Usage: python -m eval.calibrate
 """
+
 from __future__ import annotations
 
 import json
@@ -31,9 +32,14 @@ GRID = np.round(np.arange(0.02, 0.981, 0.01), 2)
 
 def calibration_rows() -> pd.DataFrame:
     sms = pd.read_csv(config.MODELS / "sms_calibration.csv")[["text", "label"]].assign(source="sms_calibration")
-    dev = [json.loads(line) for line in (config.DATA_CURATED / "golden_eval.jsonl").read_text(encoding="utf-8").splitlines()
-           if line.strip()]
-    dev_df = pd.DataFrame([{"text": r["text"], "label": r["label"], "source": "golden_dev"} for r in dev if r.get("split") == "dev"])
+    dev = [
+        json.loads(line)
+        for line in (config.DATA_CURATED / "golden_eval.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    dev_df = pd.DataFrame(
+        [{"text": r["text"], "label": r["label"], "source": "golden_dev"} for r in dev if r.get("split") == "dev"]
+    )
     return pd.concat([sms, dev_df], ignore_index=True)
 
 
@@ -52,13 +58,20 @@ def reliability(p: np.ndarray, y: np.ndarray, bins: int = 10) -> list[dict]:
     for i in range(bins):
         m = (p >= edges[i]) & (p < edges[i + 1] if i < bins - 1 else p <= edges[i + 1])
         if m.sum():
-            out.append({"bin": [round(edges[i], 2), round(edges[i + 1], 2)], "n": int(m.sum()),
-                        "mean_predicted": round(float(p[m].mean()), 4), "observed_scam_rate": round(float(y[m].mean()), 4)})
+            out.append(
+                {
+                    "bin": [round(edges[i], 2), round(edges[i + 1], 2)],
+                    "n": int(m.sum()),
+                    "mean_predicted": round(float(p[m].mean()), 4),
+                    "observed_scam_rate": round(float(y[m].mean()), 4),
+                }
+            )
     return out
 
 
 def plot(rel_by_source: dict[str, list[dict]], low: float, high: float, path: Path) -> None:
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -81,8 +94,13 @@ def plot(rel_by_source: dict[str, list[dict]], low: float, high: float, path: Pa
     ax.set_xlabel("Model's scam probability (bin average)", color="#52514e")
     ax.set_ylabel("Share that really were scams", color="#52514e")
     ax.set_title("Reliability of the language model", color="#0b0b0b", loc="left", fontsize=11)
-    fig.text(0.02, 0.01, "Middle bins hold few messages, so they jump; per-bin counts are in eval/calibration.json.",
-             color="#52514e", fontsize=7)
+    fig.text(
+        0.02,
+        0.01,
+        "Middle bins hold few messages, so they jump; per-bin counts are in eval/calibration.json.",
+        color="#52514e",
+        fontsize=7,
+    )
     ax.grid(color="#e8e7e2", lw=0.6)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
@@ -101,10 +119,20 @@ def main() -> dict:
     p = np.array([clf.score(t) for t in df.text])
     y = df.label.to_numpy()
     low, high = choose(p, y)
-    rel = {src: reliability(p[(df.source == src).to_numpy()], y[(df.source == src).to_numpy()]) for src in ("sms_calibration", "golden_dev")}
-    out = {"model_low": low, "model_high": high, "rule": "LOW: <=1% of calibration scams below; HIGH: <=1% of calibration legit above",
-           "n": int(len(df)), "n_scam": int(y.sum()), "by_source": {s: int((df.source == s).sum()) for s in rel},
-           "classifier_version": clf.version, "reliability": rel}
+    rel = {
+        src: reliability(p[(df.source == src).to_numpy()], y[(df.source == src).to_numpy()])
+        for src in ("sms_calibration", "golden_dev")
+    }
+    out = {
+        "model_low": low,
+        "model_high": high,
+        "rule": "LOW: <=1% of calibration scams below; HIGH: <=1% of calibration legit above",
+        "n": int(len(df)),
+        "n_scam": int(y.sum()),
+        "by_source": {s: int((df.source == s).sum()) for s in rel},
+        "classifier_version": clf.version,
+        "reliability": rel,
+    }
     (config.EVAL_DIR / "calibration.json").write_text(json.dumps(out, indent=2) + "\n")
     plot(rel, low, high, config.EVAL_DIR / "reliability.png")
     return out

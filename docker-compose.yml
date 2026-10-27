@@ -1,11 +1,14 @@
+# One-command local demo: docker compose up --build  ->  http://localhost:8000
 services:
   stayguard:
     build: .
     ports: ["8000:8000"]
     environment:
+      # Demo mode turns on the console's demo endpoints. Do not use demo mode on a public host.
+      STAYGUARD_DEMO_MODE: ${STAYGUARD_DEMO_MODE:-1}
+      STAYGUARD_API_KEY: ${STAYGUARD_API_KEY:-}
       STAYGUARD_ANTHROPIC_API_KEY: ${STAYGUARD_ANTHROPIC_API_KEY:-}
       STAYGUARD_LLM_MODEL: ${STAYGUARD_LLM_MODEL:-claude-haiku-5-5}
-      STAYGUARD_API_KEY: ${STAYGUARD_API_KEY:-}
       STAYGUARD_DB: /data/stayguard.db
     volumes: ["stayguard-data:/data"]
 volumes:

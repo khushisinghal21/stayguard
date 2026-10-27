@@ -3,6 +3,7 @@
 Uses the public-suffix list bundled with tldextract (no network), so multi-part suffixes such as `.com.br`
 and `.co.uk`, and every country TLD, are recognised without a hand-maintained list.
 """
+
 from __future__ import annotations
 
 import ipaddress

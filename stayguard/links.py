@@ -9,47 +9,156 @@ Two layers:
 Layer 2 is what matters on day zero, so the evaluation holds back a slice of the real Booking-themed
 phishing domains from layer 1 and measures how many layer 2 still catches.
 """
+
 from __future__ import annotations
 
 import ipaddress
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
+from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 from rapidfuzz import fuzz
 
 from . import config
 from .domains import EXTRACT as _EXTRACT
-from .domains import host_of, is_ip, registered_domain
-
+from .domains import host_of, registered_domain
 
 # "hotels" and "kayak" are deliberately absent: fuzzy-matching them would flag every hotel's own site.
-BRANDS = {"booking": "booking.com", "airbnb": "airbnb.com", "agoda": "agoda.com", "expedia": "expedia.com",
-          "priceline": "priceline.com", "tripadvisor": "tripadvisor.com"}
+BRANDS = {
+    "booking": "booking.com",
+    "airbnb": "airbnb.com",
+    "agoda": "agoda.com",
+    "expedia": "expedia.com",
+    "priceline": "priceline.com",
+    "tripadvisor": "tripadvisor.com",
+}
 # brand tokens that are allowed to appear inside hostnames only as fuzzy look-alikes (too generic as substrings)
 SUBSTRING_BRANDS = ("booking", "boking", "bookng", "bkng", "airbnb", "agoda", "expedia", "priceline")
 BRAND_SAFE_SUFFIXES = {"com", "net", "org"}
-BRAND_OWNED = {"expediapartnercentral.com", "expediagroup.com", "vrbo.com", "hotels.com", "trivago.com", "airbnb.com",
-               "agoda.net", "booking.net", "tripadvisor.com", "skyscanner.net", "workingatbooking.com", "bookingholdings.com"}
+BRAND_OWNED = {
+    "expediapartnercentral.com",
+    "expediagroup.com",
+    "vrbo.com",
+    "hotels.com",
+    "trivago.com",
+    "airbnb.com",
+    "agoda.net",
+    "booking.net",
+    "tripadvisor.com",
+    "skyscanner.net",
+    "workingatbooking.com",
+    "bookingholdings.com",
+}
 INSTITUTIONAL = ("edu", "gov", "mil", "int", "ac.uk", "gov.uk", "ac.in", "gov.in", "edu.au", "gov.pt", "gc.ca")
-RISKY_TLDS = {"xyz", "top", "live", "quest", "icu", "click", "link", "help", "lol", "rentals", "homes", "world", "shop",
-              "online", "site", "sbs", "cfd", "buzz", "rest", "bar", "cyou", "tk", "ml", "ga", "cf", "gq", "pw", "su",
-              "fun", "space", "website", "today", "support", "services", "guide", "store", "info", "zip", "mov"}
-FREE_HOSTING = ("vercel.app", "netlify.app", "webflow.io", "framer.app", "framer.website", "000webhostapp.com",
-                "pages.dev", "workers.dev", "github.io", "firebaseapp.com", "web.app", "glitch.me", "weebly.com",
-                "wixsite.com", "blogspot.com", "ngrok.io", "ngrok-free.app", "trycloudflare.com", "herokuapp.com",
-                "onrender.com", "replit.app", "repl.co", "surge.sh", "sites.google.com", "forms.gle", "carrd.co",
-                "square.site", "godaddysites.com", "mystrikingly.com", "eu.org", "duckdns.org", "kalit.ai")
-SHORTENERS = {"bit.ly", "tinyurl.com", "t.co", "goo.gl", "cutt.ly", "is.gd", "rb.gy", "shorturl.at", "ow.ly", "t.ly",
-              "tiny.cc", "s.id", "rebrand.ly", "bl.ink", "v.gd", "qrco.de", "lnkd.in", "shorte.st", "tr.im", "buff.ly"}
+RISKY_TLDS = {
+    "xyz",
+    "top",
+    "live",
+    "quest",
+    "icu",
+    "click",
+    "link",
+    "help",
+    "lol",
+    "rentals",
+    "homes",
+    "world",
+    "shop",
+    "online",
+    "site",
+    "sbs",
+    "cfd",
+    "buzz",
+    "rest",
+    "bar",
+    "cyou",
+    "tk",
+    "ml",
+    "ga",
+    "cf",
+    "gq",
+    "pw",
+    "su",
+    "fun",
+    "space",
+    "website",
+    "today",
+    "support",
+    "services",
+    "guide",
+    "store",
+    "info",
+    "zip",
+    "mov",
+}
+FREE_HOSTING = (
+    "vercel.app",
+    "netlify.app",
+    "webflow.io",
+    "framer.app",
+    "framer.website",
+    "000webhostapp.com",
+    "pages.dev",
+    "workers.dev",
+    "github.io",
+    "firebaseapp.com",
+    "web.app",
+    "glitch.me",
+    "weebly.com",
+    "wixsite.com",
+    "blogspot.com",
+    "ngrok.io",
+    "ngrok-free.app",
+    "trycloudflare.com",
+    "herokuapp.com",
+    "onrender.com",
+    "replit.app",
+    "repl.co",
+    "surge.sh",
+    "sites.google.com",
+    "forms.gle",
+    "carrd.co",
+    "square.site",
+    "godaddysites.com",
+    "mystrikingly.com",
+    "eu.org",
+    "duckdns.org",
+    "kalit.ai",
+)
+SHORTENERS = {
+    "bit.ly",
+    "tinyurl.com",
+    "t.co",
+    "goo.gl",
+    "cutt.ly",
+    "is.gd",
+    "rb.gy",
+    "shorturl.at",
+    "ow.ly",
+    "t.ly",
+    "tiny.cc",
+    "s.id",
+    "rebrand.ly",
+    "bl.ink",
+    "v.gd",
+    "qrco.de",
+    "lnkd.in",
+    "shorte.st",
+    "tr.im",
+    "buff.ly",
+}
 KNOWN_SAFE_HOSTS = {"maps.app.goo.gl", "goo.gl"}  # google maps share links (path-checked below)
-LURE_WORDS = re.compile(r"verif|confirm|secure|check-?in|checkin|extranet|admin|guest|payment|pay|login|signin|"
-                        r"account|update|refund|support|help|invoice|id\d{3,}|reserv|arrival|card|wallet|unlock",
-                        re.IGNORECASE)
+LURE_WORDS = re.compile(
+    r"verif|confirm|secure|check-?in|checkin|extranet|admin|guest|payment|pay|login|signin|"
+    r"account|update|refund|support|help|invoice|id\d{3,}|reserv|arrival|card|wallet|unlock",
+    re.IGNORECASE,
+)
 
 
-def _load_lines(path) -> set[str]:
+def _load_lines(path: Path) -> set[str]:
     if not path.exists():
         return set()
     with open(path, encoding="utf-8", errors="ignore") as f:
@@ -70,8 +179,11 @@ def _raw_blocklist() -> frozenset[str]:
             hosts.add(h.lower())
     # Never let a feed error block a popular or official domain outright.
     top = _top_domains()
-    return frozenset(h for h in hosts if h not in top and registered_domain(h) not in config.OFFICIAL_DOMAINS
-                     and h.removeprefix("www.") not in top)
+    return frozenset(
+        h
+        for h in hosts
+        if h not in top and registered_domain(h) not in config.OFFICIAL_DOMAINS and h.removeprefix("www.") not in top
+    )
 
 
 @dataclass
@@ -79,18 +191,23 @@ class LinkVerdict:
     url: str
     host: str
     registered_domain: str
-    verdict: str          # official | safe | unknown | suspicious | malicious
+    verdict: str  # official | safe | unknown | suspicious | malicious
     score: float
     reasons: list[str] = field(default_factory=list)
 
-    def as_dict(self) -> dict:
-        return {"url": self.url, "host": self.host, "registered_domain": self.registered_domain,
-                "verdict": self.verdict, "score": round(self.score, 3), "reasons": self.reasons}
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "url": self.url,
+            "host": self.host,
+            "registered_domain": self.registered_domain,
+            "verdict": self.verdict,
+            "score": round(self.score, 3),
+            "reasons": self.reasons,
+        }
 
 
 class LinkChecker:
-    def __init__(self, exclude_hosts: set[str] | None = None, use_blocklist: bool = True,
-                 extra_official: set[str] | None = None):
+    def __init__(self, exclude_hosts: set[str] | None = None, use_blocklist: bool = True, extra_official: set[str] | None = None):
         self.exclude = {h.lower() for h in (exclude_hosts or set())}
         self.use_blocklist = use_blocklist
         self.official = set(config.OFFICIAL_DOMAINS) | {d.lower() for d in (extra_official or set())}
@@ -121,8 +238,15 @@ class LinkChecker:
         if rd in official or host in official:
             return LinkVerdict(url, host, rd, "official", 0.0, ["OFFICIAL_DOMAIN"])
         ext = _EXTRACT(host)
-        if ext.domain in BRANDS and (ext.suffix in BRAND_SAFE_SUFFIXES or len(ext.suffix) == 2 or
-                                     re.fullmatch(r"(?:co|com)\.[a-z]{2}", ext.suffix or "")) and not self._blocklisted(host):
+        if (
+            ext.domain in BRANDS
+            and (
+                ext.suffix in BRAND_SAFE_SUFFIXES
+                or len(ext.suffix) == 2
+                or re.fullmatch(r"(?:co|com)\.[a-z]{2}", ext.suffix or "")
+            )
+            and not self._blocklisted(host)
+        ):
             # airbnb.es, expedia.co.in: the brand's own country sites (brands register these defensively)
             return LinkVerdict(url, host, rd, "safe", 0.05, ["BRAND_OWNED_DOMAIN"])
         if rd in BRAND_OWNED:
@@ -143,7 +267,6 @@ class LinkChecker:
             pass
 
         labels = host.split(".")
-        rd_label = rd.split(".")[0] if rd else ""
         tld = labels[-1] if labels else ""
 
         # brand inside a hostname that the brand does not own
@@ -180,12 +303,13 @@ class LinkChecker:
                 except UnicodeError:
                     decoded = host
                 labels_dec = decoded.split(".")[:-1] or [decoded]
-                spoof = any(any("a" <= ch <= "z" for ch in lab) and any("\u0370" <= ch <= "\u04ff" for ch in lab)
-                            for lab in labels_dec)  # one label mixing Latin with Greek/Cyrillic look-alikes
-                if spoof:                    # bооking.com with Cyrillic о
+                spoof = any(
+                    any("a" <= ch <= "z" for ch in lab) and any("\u0370" <= ch <= "\u04ff" for ch in lab) for lab in labels_dec
+                )  # one label mixing Latin with Greek/Cyrillic look-alikes
+                if spoof:  # bооking.com with Cyrillic о
                     score += 0.45
                     reasons.append("PUNYCODE_MIXED_SCRIPT")
-                else:                        # a genuine Cyrillic / Hindi / Chinese domain
+                else:  # a genuine Cyrillic / Hindi / Chinese domain
                     score += 0.1
                     reasons.append("INTERNATIONAL_DOMAIN")
             if tld in RISKY_TLDS:
@@ -221,6 +345,8 @@ class LinkChecker:
 
         score = max(0.0, min(1.0, score))
         verdict = "suspicious" if score >= 0.6 else ("unknown" if score >= 0.3 else "safe")
-        if verdict == "suspicious" and any(r in reasons for r in ("BRAND_IN_FOREIGN_DOMAIN", "TYPOSQUAT", "PUNYCODE_MIXED_SCRIPT")):
+        if verdict == "suspicious" and any(
+            r in reasons for r in ("BRAND_IN_FOREIGN_DOMAIN", "TYPOSQUAT", "PUNYCODE_MIXED_SCRIPT")
+        ):
             verdict = "malicious"
         return LinkVerdict(url, host, rd, verdict, score, reasons)

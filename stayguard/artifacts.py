@@ -1,5 +1,6 @@
 """Model files are pickles (joblib), and loading a pickle runs code. So every model we write gets a SHA-256
 sidecar, and we only load a file whose hash matches; anything else is treated as missing and rebuilt."""
+
 from __future__ import annotations
 
 import hashlib

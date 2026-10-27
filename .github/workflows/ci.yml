@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Fully offline: fixture data, no API key, throwaway models, demo endpoints on for the API tests.
+      STAYGUARD_DATA_RAW: tests/fixtures/raw
+      STAYGUARD_MODELS: /tmp/stayguard-models
+      STAYGUARD_ANTHROPIC_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+      - name: Install (pinned)
+        run: pip install --require-hashes -r requirements-dev.lock && pip install --no-deps -e .
+      - name: Lint
+        run: ruff check . && ruff format --check .
+      - name: Types
+        run: mypy stayguard
+      - name: Tests with coverage
+        run: pytest --cov=stayguard --cov-report=json --cov-report=term
+      - name: Coverage gates (85% overall, 95% on the decision path)
+        run: python scripts/check_coverage.py coverage.json
+      - name: Docs quote the committed report
+        run: python scripts/render_docs.py --check
+      - name: Fast offline evaluation (fixtures)
+        run: python -m eval.evaluate --fast --out /tmp/eval-fast

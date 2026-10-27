@@ -1,9 +1,10 @@
 """Maintenance commands.
 
-    python -m stayguard.maintenance purge          # drop raw message text older than the retention period
-    python -m stayguard.maintenance anchor         # append the current audit head to the anchor file
-    python -m stayguard.maintenance verify-audit   # check the hash chain and every anchor
+python -m stayguard.maintenance purge          # drop raw message text older than the retention period
+python -m stayguard.maintenance anchor         # append the current audit head to the anchor file
+python -m stayguard.maintenance verify-audit   # check the hash chain and every anchor
 """
+
 from __future__ import annotations
 
 import argparse

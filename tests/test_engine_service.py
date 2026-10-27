@@ -23,8 +23,11 @@ def test_known_phishing_link_blocks(engine):
 
 
 def test_overpayment_guest_to_hotel(engine):
-    d = engine.check("My assistant overpaid by 900 EUR, please wire back the difference today",
-                     {"payment_terms": "prepaid", "direction": "guest_to_hotel"}, record=False)
+    d = engine.check(
+        "My assistant overpaid by 900 EUR, please wire back the difference today",
+        {"payment_terms": "prepaid", "direction": "guest_to_hotel"},
+        record=False,
+    )
     assert d.decision == "hold" and "OVERPAYMENT_REFUND_REQUEST" in d.reasons
 
 
@@ -81,6 +84,7 @@ def test_simulation_and_containment(service):
 
 def test_idempotency(service):
     from stayguard.service import IdempotencyConflict
+
     r = service.upcoming("H1", limit=1)[0]
     a = service.check_message(text="Breakfast is from 7.", reservation_id=r["id"], message_id="idem-1")
     again = service.check_message(text="Breakfast is from 7.", reservation_id=r["id"], message_id="idem-1")
@@ -110,11 +114,21 @@ def test_api_endpoints(client):
     assert r.status_code == 200 and r.json()["decision"] == "deliver"
     bad = client.post("/v1/messages/check", json={"text": ""})
     assert bad.status_code == 422
-    s = client.post("/v1/sessions/score", json={"property_id": "H1", "user": "x", "token_replay": True, "new_asn": True,
-                                               "hosting_asn": True, "km_from_usual": 6000, "speed_kmh": 9000})
+    s = client.post(
+        "/v1/sessions/score",
+        json={
+            "property_id": "H1",
+            "user": "x",
+            "token_replay": True,
+            "new_asn": True,
+            "hosting_asn": True,
+            "km_from_usual": 6000,
+            "speed_kmh": 9000,
+        },
+    )
     assert s.json()["level"] == "critical" and s.json()["step_up_required"]
     m = client.get("/v1/metrics").json()
-    assert m["dataset"]["reservations"] == 119390
+    assert m["dataset"]["reservations"] == 2782  # the fixture snapshot (tests/fixtures/raw/hotels.csv)
     assert client.get("/v1/audit/verify").json()["ok"]
     assert json.dumps(client.get("/v1/audit?limit=3").json())
 
@@ -122,18 +136,31 @@ def test_api_endpoints(client):
 def test_anthropic_judge_parsing_and_quote_filter(monkeypatch):
     """The real-LLM path, with the HTTP call mocked: invented quotes are dropped, failures open the breaker."""
     import httpx
+
     from stayguard.engine import Engine
     from stayguard.judges import AnthropicJudge
 
     replies = {
-        "prosecutor": '{"verdict": "scam", "confidence": 0.9, "evidence": ["settle the balance", "wire it to Lagos"], "rationale": "money ask"}',
+        "prosecutor": json.dumps(
+            {
+                "verdict": "scam",
+                "confidence": 0.9,
+                "evidence": ["settle the balance", "wire it to Lagos"],
+                "rationale": "money ask",
+            }
+        ),
         "defender": '{"verdict": "legit", "confidence": 0.3, "evidence": [], "rationale": "weak"}',
     }
 
     class R:
-        def __init__(self, text): self._t = text
-        def raise_for_status(self): pass
-        def json(self): return {"content": [{"type": "text", "text": self._t}]}
+        def __init__(self, text):
+            self._t = text
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"content": [{"type": "text", "text": self._t}]}
 
     def fake_post(url, timeout, headers, json):
         role = "prosecutor" if "prosecutor" in json["system"] else "defender"
@@ -149,7 +176,9 @@ def test_anthropic_judge_parsing_and_quote_filter(monkeypatch):
         assert d.judges["prosecutor"]["evidence"] == ["settle the balance"]
         assert d.judges["prosecutor"]["rejected_evidence"] == ["wire it to Lagos"]
 
-    def boom(*a, **k): raise httpx.ConnectTimeout("timeout")
+    def boom(*a, **k):
+        raise httpx.ConnectTimeout("timeout")
+
     monkeypatch.setattr(httpx, "post", boom)
     for _ in range(4):
         d = eng.check(text, {"payment_terms": "deposit", "direction": "hotel_to_guest"}, record=False)

@@ -14,12 +14,13 @@ The golden evaluation set (data/curated/golden_eval.jsonl) is never used here.
 URLs are replaced by a token before training: judging links is the link checker's job, and we don't want
 the model memorising domains.
 """
+
 from __future__ import annotations
 
 import json
 import random
-import re
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -41,11 +42,23 @@ HOTELS = ["Lisbon City Hotel", "Algarve Resort Hotel", "our hotel", "the propert
 AMOUNTS = ["EUR 120", "150 EUR", "€85", "€240", "$199", "₹4,500", "Rs 3000", "300 euros", "95 EUR"]
 HOURS = ["6", "12", "24", "48", "2"]
 DATES = ["14 June", "Friday", "3 August", "next Monday", "the 21st"]
-SCAM_LINKS = ["https://guest-verify-{n}.xyz/pay", "https://booking-{n}-confirm.com", "http://secure-roompay.top/{n}",
-              "https://bit.ly/{n}Kx", "https://card-check-guest.online/r/{n}", "https://reserv-{n}.live/verify",
-              "https://stay-guarantee.vercel.app/{n}", "hxxps://pay-hotel-{n}.shop"]
-LEGIT_LINKS = ["https://maps.app.goo.gl/{n}a", "https://www.booking.com/mybooking", "https://instagram.com/hotel{n}",
-               "https://www.lisboncityhotel.pt/menu", "https://www.visitportugal.com"]
+SCAM_LINKS = [
+    "https://guest-verify-{n}.xyz/pay",
+    "https://booking-{n}-confirm.com",
+    "http://secure-roompay.top/{n}",
+    "https://bit.ly/{n}Kx",
+    "https://card-check-guest.online/r/{n}",
+    "https://reserv-{n}.live/verify",
+    "https://stay-guarantee.vercel.app/{n}",
+    "hxxps://pay-hotel-{n}.shop",
+]
+LEGIT_LINKS = [
+    "https://maps.app.goo.gl/{n}a",
+    "https://www.booking.com/mybooking",
+    "https://instagram.com/hotel{n}",
+    "https://www.lisboncityhotel.pt/menu",
+    "https://www.visitportugal.com",
+]
 
 
 def prep(text: str) -> str:
@@ -56,16 +69,22 @@ def prep(text: str) -> str:
 
 def _fill(tpl: str, rng: random.Random) -> str:
     n = str(rng.randint(1000, 99999))
-    return tpl.format(name=rng.choice(NAMES), hotel=rng.choice(HOTELS), amount=rng.choice(AMOUNTS),
-                      hours=rng.choice(HOURS), date=rng.choice(DATES), res=f"{rng.randint(1000,9999)}-{rng.randint(1000,9999)}",
-                      link=rng.choice(SCAM_LINKS).format(n=n))
+    return tpl.format(
+        name=rng.choice(NAMES),
+        hotel=rng.choice(HOTELS),
+        amount=rng.choice(AMOUNTS),
+        hours=rng.choice(HOURS),
+        date=rng.choice(DATES),
+        res=f"{rng.randint(1000, 9999)}-{rng.randint(1000, 9999)}",
+        link=rng.choice(SCAM_LINKS).format(n=n),
+    )
 
 
 def hotel_training_rows(copies: int = 8) -> pd.DataFrame:
-    rng = random.Random(SEED)
+    rng = random.Random(SEED)  # noqa: S311 - seeded augmentation for reproducible training, not security
     rows = []
     with open(config.DATA_CURATED / "train_seeds.jsonl", encoding="utf-8") as f:
-        seeds = [json.loads(l) for l in f if l.strip()]
+        seeds = [json.loads(line) for line in f if line.strip()]
     for s in seeds:
         for _ in range(copies):
             txt = _fill(s["text"], rng)
@@ -93,24 +112,39 @@ def sms_splits() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 
 
 def build_pipeline() -> Pipeline:
-    feats = FeatureUnion([
-        ("word", TfidfVectorizer(analyzer="word", ngram_range=(1, 2), min_df=1, sublinear_tf=True, max_features=40000,
-                                 token_pattern=r"(?u)\b\w+\b")),
-        ("char", TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 5), min_df=2, sublinear_tf=True, max_features=80000)),
-    ])
+    feats = FeatureUnion(
+        [
+            (
+                "word",
+                TfidfVectorizer(
+                    analyzer="word",
+                    ngram_range=(1, 2),
+                    min_df=1,
+                    sublinear_tf=True,
+                    max_features=40000,
+                    token_pattern=r"(?u)\b\w+\b",  # noqa: S106 - a regex, not a password
+                ),
+            ),
+            ("char", TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 5), min_df=2, sublinear_tf=True, max_features=80000)),
+        ]
+    )
     return Pipeline([("feats", feats), ("lr", LogisticRegression(C=6.0, max_iter=3000, class_weight="balanced"))])
 
 
 @dataclass
 class TrainReport:
-    sms_test: dict
+    sms_test: dict[str, Any]
     n_train: int
     n_sms_train: int
     n_hotel_train: int
 
-    def as_dict(self) -> dict:
-        return {"sms_test": self.sms_test, "n_train": self.n_train, "n_sms_train": self.n_sms_train,
-                "n_hotel_train": self.n_hotel_train}
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "sms_test": self.sms_test,
+            "n_train": self.n_train,
+            "n_sms_train": self.n_sms_train,
+            "n_hotel_train": self.n_hotel_train,
+        }
 
 
 def train(save: bool = True) -> tuple[Pipeline, TrainReport, pd.DataFrame]:
@@ -125,9 +159,18 @@ def train(save: bool = True) -> tuple[Pipeline, TrainReport, pd.DataFrame]:
     y = sms_te["label"].to_numpy()
     yhat = (p >= 0.5).astype(int)
     rep = TrainReport(
-        sms_test={"n": int(len(y)), "roc_auc": float(roc_auc_score(y, p)), "pr_auc": float(average_precision_score(y, p)),
-                  "precision": float(precision_score(y, yhat)), "recall": float(recall_score(y, yhat)), "f1": float(f1_score(y, yhat))},
-        n_train=int(len(tr)), n_sms_train=int(len(sms_tr)), n_hotel_train=int(len(hotel)))
+        sms_test={
+            "n": int(len(y)),
+            "roc_auc": float(roc_auc_score(y, p)),
+            "pr_auc": float(average_precision_score(y, p)),
+            "precision": float(precision_score(y, yhat)),
+            "recall": float(recall_score(y, yhat)),
+            "f1": float(f1_score(y, yhat)),
+        },
+        n_train=int(len(tr)),
+        n_sms_train=int(len(sms_tr)),
+        n_hotel_train=int(len(hotel)),
+    )
     if save:
         config.MODELS.mkdir(parents=True, exist_ok=True)
         save_model({"pipeline": pipe, "report": rep.as_dict(), "version": "tfidf-lr-1"}, MODEL_PATH)
@@ -144,6 +187,8 @@ class ScamClassifier:
         if blob is None:  # missing, or not the file we wrote
             train(save=True)
             blob = load_model(MODEL_PATH)
+        if blob is None:
+            raise RuntimeError(f"could not build or load {MODEL_PATH}")
         self.pipe: Pipeline = blob["pipeline"]
         self.report = blob.get("report", {})
 
@@ -156,7 +201,7 @@ class ScamClassifier:
         coefs = self.pipe.named_steps["lr"].coef_[0][: len(word_vec.vocabulary_)]
         x = word_vec.transform([prep(text)])
         contrib = x.multiply(coefs).tocoo()
-        pairs = sorted(zip(contrib.col, contrib.data), key=lambda t: -t[1])
+        pairs = sorted(zip(contrib.col, contrib.data, strict=True), key=lambda t: -t[1])
         inv = {i: w for w, i in word_vec.vocabulary_.items()}
         return [inv[i] for i, v in pairs[:k] if v > 0 and inv[i] != "urltoken"]
 

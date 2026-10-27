@@ -4,6 +4,7 @@ The phishing feeds are live and change daily, so evaluation numbers only mean so
 files they were computed on. eval/evaluate.py stores this manifest's hash in report.json.
 Usage: python scripts/make_manifest.py [data_dir]
 """
+
 from __future__ import annotations
 
 import hashlib

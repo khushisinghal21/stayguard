@@ -9,6 +9,7 @@ Access model
 - Demo-only (404 unless STAYGUARD_DEMO_MODE=1): issuing a PIN, the scripted attack, samples.
 - Demo mode with no key configured lets the console call internal endpoints without a key (local use only).
 """
+
 from __future__ import annotations
 
 import hmac
@@ -26,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import __version__, config, db
+from .logs import setup_logging
 from .service import IdempotencyConflict, Service
 
 STATIC = Path(__file__).parent / "static"
@@ -35,12 +37,17 @@ _svc_lock = threading.Lock()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    setup_logging()
     svc()  # load models + feeds before the first request
     yield
 
 
-app = FastAPI(title="StayGuard API", version=__version__, lifespan=lifespan,
-              description="Stops reservation-hijack scams sent from compromised hotel accounts.")
+app = FastAPI(
+    title="StayGuard API",
+    version=__version__,
+    lifespan=lifespan,
+    description="Stops reservation-hijack scams sent from compromised hotel accounts.",
+)
 
 
 def svc() -> Service:
@@ -102,21 +109,28 @@ def rate_limited(bucket: str, per_min: Callable[[], float]) -> Callable[[Request
     def dep(request: Request) -> None:
         if not limiter.allow(bucket, client_id(request), per_min()):
             raise HTTPException(429, "rate limit exceeded", headers={"Retry-After": "10"})
+
     return dep
 
 
 # ---------------------------------------------------------------- security headers
-CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; "
-       "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; "
+    "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+)
 
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     resp = await call_next(request)
-    resp.headers.setdefault("Content-Security-Policy", CSP if not request.url.path.startswith("/docs") else
-                            CSP.replace("script-src 'self'", "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net")
-                               .replace("style-src 'self'", "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net")
-                               .replace("img-src 'self' data:", "img-src 'self' data: https://fastapi.tiangolo.com"))
+    resp.headers.setdefault(
+        "Content-Security-Policy",
+        CSP
+        if not request.url.path.startswith("/docs")
+        else CSP.replace("script-src 'self'", "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net")
+        .replace("style-src 'self'", "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net")
+        .replace("img-src 'self' data:", "img-src 'self' data: https://fastapi.tiangolo.com"),
+    )
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("Referrer-Policy", "no-referrer")
     resp.headers.setdefault("X-Frame-Options", "DENY")
@@ -131,9 +145,14 @@ class MessageIn(BaseModel):
     direction: Literal["hotel_to_guest", "guest_to_hotel"] = "hotel_to_guest"
     payment_terms: Literal["pay_at_property", "prepaid", "deposit", "unknown"] | None = None
     property_id: str | None = None
-    message_id: str | None = Field(None, max_length=128, description=(
-        "Idempotency key. Re-sending the same id with the same payload returns the first decision; "
-        "the same id with a different payload is rejected with 409."))
+    message_id: str | None = Field(
+        None,
+        max_length=128,
+        description=(
+            "Idempotency key. Re-sending the same id with the same payload returns the first decision; "
+            "the same id with a different payload is rejected with 409."
+        ),
+    )
 
 
 class SessionIn(BaseModel):
@@ -184,13 +203,20 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 @app.get("/healthz")
 def health() -> dict[str, Any]:
     s = svc()
-    return {"ok": True, "version": __version__, "demo_mode": config.DEMO_MODE, "judge_provider": s.engine.judge_provider,
-            "breaker": s.engine.breaker.state, "blocklist_size": s.engine.links.blocklist_size}
+    return {
+        "ok": True,
+        "version": __version__,
+        "demo_mode": config.DEMO_MODE,
+        "judge_provider": s.engine.judge_provider,
+        "breaker": s.engine.breaker.state,
+        "blocklist_size": s.engine.links.blocklist_size,
+    }
 
 
 # ---------------------------------------------------------------- internal API
-@app.post("/v1/messages/check", dependencies=[Depends(internal),
-                                              Depends(rate_limited("check", lambda: config.RATE_CHECK_PER_MIN))])
+@app.post(
+    "/v1/messages/check", dependencies=[Depends(internal), Depends(rate_limited("check", lambda: config.RATE_CHECK_PER_MIN))]
+)
 def check_message(body: MessageIn) -> dict[str, Any]:
     try:
         return svc().check_message(**body.model_dump())
@@ -222,8 +248,9 @@ def contain(property_id: str, body: ContainIn) -> dict[str, Any]:
 
 
 @app.get("/v1/properties/{property_id}/reservations", dependencies=[Depends(internal)])
-def reservations(property_id: str, limit: int = Query(25, ge=1, le=200), terms: str | None = None,
-                 offset: int = Query(0, ge=0)) -> list[dict[str, Any]]:
+def reservations(
+    property_id: str, limit: int = Query(25, ge=1, le=200), terms: str | None = None, offset: int = Query(0, ge=0)
+) -> list[dict[str, Any]]:
     rows = svc().upcoming(property_id, limit=limit, terms=terms, offset=offset)
     return [{k: v for k, v in r.items() if k not in ("pin_salt", "pin_hash")} for r in rows]
 
@@ -236,8 +263,11 @@ def notices(rid: str) -> list[dict[str, Any]]:
 @app.get("/v1/messages", dependencies=[Depends(internal)])
 def messages(limit: int = Query(50, ge=1, le=500)) -> list[dict[str, Any]]:
     # `text` is the PII-masked text; raw text (if retained at all) is never served
-    rows = db.con().execute("SELECT id, created, property_id, reservation_id, session_id, direction, text, decision, reasons, path "
-                            "FROM messages ORDER BY created DESC LIMIT ?", (limit,))
+    rows = db.con().execute(
+        "SELECT id, created, property_id, reservation_id, session_id, direction, text, decision, reasons, path "
+        "FROM messages ORDER BY created DESC LIMIT ?",
+        (limit,),
+    )
     return [{**dict(r), "reasons": json.loads(r["reasons"])} for r in rows]
 
 
@@ -249,9 +279,14 @@ def cases() -> list[dict[str, Any]]:
 @app.get("/v1/metrics", dependencies=[Depends(internal)])
 def metrics() -> dict[str, Any]:
     s = svc()
-    out: dict[str, Any] = {"live": s.engine.metrics.snapshot(s.engine.judge_provider), "breaker": s.engine.breaker.state,
-                           "dataset": db.dataset_facts(), "blocklist_size": s.engine.links.blocklist_size,
-                           "classifier": s.engine.clf.report, "session_model": s.sessions.report}
+    out: dict[str, Any] = {
+        "live": s.engine.metrics.snapshot(s.engine.judge_provider),
+        "breaker": s.engine.breaker.state,
+        "dataset": db.dataset_facts(),
+        "blocklist_size": s.engine.links.blocklist_size,
+        "classifier": s.engine.clf.report,
+        "session_model": s.sessions.report,
+    }
     rep = config.EVAL_DIR / "report.json"
     if rep.exists():
         out["evaluation"] = json.loads(rep.read_text())
@@ -289,8 +324,11 @@ SAMPLE_IDS = ["g002", "g019", "g031", "g046", "g054", "g121", "g124", "g126", "g
 @app.get("/v1/samples", dependencies=[Depends(demo_only)])
 def samples() -> list[dict[str, Any]]:
     """A few messages from the dev golden set for the console's 'Check a message' tab."""
-    rows = [json.loads(line) for line in (config.DATA_CURATED / "golden_eval.jsonl").read_text(encoding="utf-8").splitlines()
-            if line.strip()]
+    rows = [
+        json.loads(line)
+        for line in (config.DATA_CURATED / "golden_eval.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     by_id = {r["id"]: r for r in rows}
     return [by_id[i] for i in SAMPLE_IDS if i in by_id]
 
