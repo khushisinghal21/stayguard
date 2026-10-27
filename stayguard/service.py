@@ -130,19 +130,21 @@ class Service:
 
     def _score_session(self, sid: str, property_id: str, user: str, event: dict[str, Any]) -> dict[str, Any]:
         sc = self.sessions.score(event)
-        prop = self.property(property_id)
-        if prop and prop.get("password_reset_required"):
-            # Containment demanded a password reset and passkey. Until the property is marked recovered, every new
-            # session is treated as taken over, so nothing it sends reaches guests (review round 1: the flag used to be
-            # written but never read).
-            sc.risk, sc.level = max(sc.risk, 0.95), "critical"
-            sc.reasons = ["PASSWORD_RESET_PENDING", *sc.reasons]
-        log.info("session scored property=%s risk=%.3f level=%s reasons=%s", property_id, sc.risk, sc.level, ",".join(sc.reasons))
         with db.tx() as t:
+            # Read the containment flag in the same write transaction as the insert: reading it first let a containment
+            # that committed in between leave this new session active and normal (review round 2, A9).
+            prop = t.execute("SELECT password_reset_required FROM properties WHERE id=?", (property_id,)).fetchone()
+            if prop and prop[0]:
+                # Containment demanded a password reset and passkey. Until the property is marked recovered, every new
+                # session is treated as taken over, so nothing it sends reaches guests (review round 1: the flag used to
+                # be written but never read).
+                sc.risk, sc.level = max(sc.risk, 0.95), "critical"
+                sc.reasons = ["PASSWORD_RESET_PENDING", *sc.reasons]
             t.execute(
                 "INSERT INTO sessions (id, property_id, user, created, event, risk, level, reasons) VALUES (?,?,?,?,?,?,?,?)",
                 (sid, property_id, user, time.time(), json.dumps(event), sc.risk, sc.level, json.dumps(sc.reasons)),
             )
+        log.info("session scored property=%s risk=%.3f level=%s reasons=%s", property_id, sc.risk, sc.level, ",".join(sc.reasons))
         db.audit("session.scored", {"session_id": sid, "property_id": property_id, "user": user, **sc.as_dict()})
         return {
             "session_id": sid,

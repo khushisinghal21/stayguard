@@ -14,6 +14,7 @@ from stayguard.judges import (
     AnthropicJudge,
     CircuitBreaker,
     JudgeOpinion,
+    JudgeReplyUnusable,
     JudgeUnavailable,
     OfflineJudge,
     make_judge,
@@ -111,7 +112,7 @@ def test_breaker_half_open_admits_one_probe_under_concurrency():
         t.start()
     for t in threads:
         t.join()
-    assert admitted.count(True) == 1
+    assert admitted.count("probe") == 1 and admitted.count("") == 15
 
 
 def test_forced_outage():
@@ -202,6 +203,16 @@ def test_anthropic_happy_path(monkeypatch):
 
 @pytest.mark.parametrize(
     "reply",
+    [Resp(status=529), httpx.ConnectTimeout("t")],
+)
+def test_anthropic_transport_failures_are_provider_failures(monkeypatch, reply):
+    j = judge_with(monkeypatch, reply)
+    with pytest.raises(JudgeUnavailable):
+        j.rule(TEXT, extract(TEXT), {}, 0.5, 0.0)
+
+
+@pytest.mark.parametrize(
+    "reply",
     [
         Resp("no json here"),
         Resp("[1, 2]"),
@@ -210,13 +221,12 @@ def test_anthropic_happy_path(monkeypatch):
         Resp('{"verdict": "scam", "confidence": NaN}'),
         Resp('{"verdict": "scam", "confidence": 0.5, "evidence": "pay"}'),
         Resp('{"verdict": "scam", "confidence": 0.5, '),
-        Resp(status=529),
-        httpx.ConnectTimeout("t"),
     ],
 )
-def test_anthropic_malformed_replies_are_provider_failures(monkeypatch, reply):
+def test_anthropic_unusable_reply_text_is_not_a_provider_failure(monkeypatch, reply):
+    # Message content can provoke these (review round 2, A5), so they hold the one message and never feed the breaker.
     j = judge_with(monkeypatch, reply)
-    with pytest.raises(JudgeUnavailable):
+    with pytest.raises(JudgeReplyUnusable):
         j.rule(TEXT, extract(TEXT), {}, 0.5, 0.0)
 
 

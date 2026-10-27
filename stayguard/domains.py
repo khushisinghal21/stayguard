@@ -48,6 +48,9 @@ def host_of(url: str) -> str:
     """Hostname a browser would actually visit: handles hxxp, missing scheme, userinfo (`booking.com@evil.xyz`),
     percent-encoding, ports and a trailing dot."""
     u = url.strip()
+    # Browsers (WHATWG URL) treat "\\" as "/" in http(s) URLs, so "https://evil.xyz\\@www.booking.com/" goes to evil.xyz;
+    # Python's urlsplit read booking.com as the host (review round 2, A2).
+    u = u.replace("\\", "/")
     u = re.sub(r"^hxxp", "http", u, flags=re.IGNORECASE)
     if "://" not in u:
         u = "http://" + u

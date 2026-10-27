@@ -9,12 +9,13 @@ from __future__ import annotations
 import logging
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
 
 from . import config
 from .classifier import ScamClassifier
-from .judges import INSTRUCTION, CircuitBreaker, Judge, JudgeUnavailable, OfflineJudge, make_judge
+from .judges import INSTRUCTION, CircuitBreaker, Judge, JudgeReplyUnusable, JudgeUnavailable, OfflineJudge, make_judge
 from .links import LinkChecker
 from .signals import detect_language, extract, mask_pii
 
@@ -49,6 +50,7 @@ REASON_TEXT = {
     "JUDGES_UNSURE": "AI judges are split - delivered with a warning.",
     "JUDGES_LEGIT": "AI judges agree it is a normal message.",
     "DEGRADED_WARN": "AI review unavailable - delivered with a warning (normal session).",
+    "JUDGE_REPLY_UNUSABLE": "The AI review could not be completed for this message - held for a human.",
     "DEGRADED_RISKY_SESSION": "AI review unavailable and the sender's session is risky - held.",
     "RISKY_SESSION": "Sender's login looks unusual, so the decision was made one step stricter.",
     "SYSTEM_EXCEPTION_FAIL_CLOSED": "StayGuard hit an internal error, so the message is held for review rather than delivered.",
@@ -300,9 +302,19 @@ class Engine:
         # link still goes to the model/judges instead of the fast path.
         unofficial_link = any(v.verdict != "official" for v in lv)
         # an unknown site plus an instruction ("finish it at <link>") is the shape of lexicon-free phishing
-        unvouched_kinds = ("UNKNOWN_DOMAIN", "USER_CONTENT_HOST", "BRAND_COUNTRY_DOMAIN", "URL_SHORTENER_HIDES_DESTINATION")
+        # FREE_SITE_BUILDER and POPULAR_PLATFORM_SUBDOMAIN added in review round 2: anyone can publish a page there
+        unvouched_kinds = (
+            "UNKNOWN_DOMAIN",
+            "USER_CONTENT_HOST",
+            "BRAND_COUNTRY_DOMAIN",
+            "URL_SHORTENER_HIDES_DESTINATION",
+            "FREE_SITE_BUILDER",
+            "POPULAR_PLATFORM_SUBDOMAIN",
+            "OPEN_REDIRECTOR",
+        )
+        # on the NFKC form: fullwidth "Ｃｏｍｐｌｅｔｅ" hid the instruction word (review round 2, A6)
         unknown_link_with_instruction = any(r in v.reasons for v in lv for r in unvouched_kinds) and bool(
-            INSTRUCTION.search(text)
+            INSTRUCTION.search(unicodedata.normalize("NFKC", text))
         )
         quiet = not (
             sig.money_ask
@@ -330,7 +342,9 @@ class Engine:
         judges_out, llm_called = None, False
         ruling_needed = False
         if not rule_decided:
-            if quiet and not reasons and model_p <= config.MODEL_HIGH:
+            # A card or payment-rail mention set aside only because a reassurance shared its clause never takes the
+            # quiet fast path: the judges decide (review round 2, A1/B1). Worst case with judges down: a warning.
+            if quiet and not reasons and model_p <= config.MODEL_HIGH and not sig.reassured_sensitive:
                 path = "rule"
                 reasons.append("NO_PAYMENT_ASK")
             elif quiet and not reasons:
@@ -351,7 +365,9 @@ class Engine:
                 # 5. judges ----------------------------------------------------------------
                 s = time.perf_counter()
                 ruling = None
-                if self.breaker.allow():
+                unusable = False
+                ticket = self.breaker.allow()
+                if ticket:
                     # Only provider problems (timeout, HTTP, unparseable reply) count as "judges unavailable" and
                     # feed the breaker. Anything else is a bug in our code: it propagates to check(), which holds
                     # the message, instead of quietly delivering it under the degraded policy.
@@ -359,12 +375,18 @@ class Engine:
                         ctx["links"] = partial["links"]  # per-link verdicts, so a judge can tell a maps link from a fresh domain
                         ruling = self.judge.rule(masked, sig, ctx, model_p, worst)
                         llm_called = not isinstance(self.judge, OfflineJudge)
-                        self.breaker.record(True)
+                        self.breaker.record(True, probe=ticket == "probe")
+                    except JudgeReplyUnusable:
+                        # The provider answered, but not usably for THIS message (truncated or malformed JSON). Message
+                        # content can cause that, so it must not feed the shared breaker (review round 2, A5: three long
+                        # messages could switch every tenant to the degraded policy). Hold this message instead.
+                        self.breaker.release_probe(probe=ticket == "probe")
+                        unusable = True
                     except JudgeUnavailable:
-                        self.breaker.record(False)
+                        self.breaker.record(False, probe=ticket == "probe")
                         self.metrics.judge_failed()
                     except Exception:
-                        self.breaker.release_probe()  # a bug is not a provider verdict; don't wedge half-open
+                        self.breaker.release_probe(probe=ticket == "probe")  # a bug is not a provider verdict
                         raise
                 if ruling:
                     path = "judges"
@@ -378,6 +400,10 @@ class Engine:
                     winning = ruling.prosecutor if ruling.p_scam >= 0.4 else ruling.defender
                     evidence.extend({"kind": "judge_quote", "quote": q} for q in winning.evidence[:3])
                     stage("judges", s, provider=ruling.provider, p_scam=round(ruling.p_scam, 3))
+                elif unusable:
+                    path = "judges"
+                    escalate("hold", "JUDGE_REPLY_UNUSABLE")
+                    stage("judges", s, provider="reply_unusable")
                 else:
                     path = "degraded"
                     if session.get("risk", 0) >= config.SESSION_RISKY:

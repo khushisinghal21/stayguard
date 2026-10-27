@@ -218,7 +218,8 @@ def health() -> dict[str, Any]:
         "version": __version__,
         "demo_mode": config.DEMO_MODE,
         "judge_provider": s.engine.judge_provider,
-        "breaker": s.engine.breaker.state,
+        # breaker state is internal only (/v1/metrics): on the public health check it told an attacker exactly when
+        # the judges were down (review round 2, A5)
         "blocklist_size": s.engine.links.blocklist_size,
     }
 

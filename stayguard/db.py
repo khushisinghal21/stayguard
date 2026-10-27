@@ -340,8 +340,12 @@ def audit(kind: str, payload: dict[str, Any]) -> str:
         h = _h(prev, ts, kind, body)
         cur = t.execute("INSERT INTO audit (ts, kind, payload, prev_hash, hash) VALUES (?,?,?,?,?)", (ts, kind, body, prev, h))
         seq = int(cur.lastrowid or 0)
-        if config.AUDIT_ANCHOR_EVERY and seq % config.AUDIT_ANCHOR_EVERY == 0:
-            _write_anchor(seq, h)  # inside the write lock, so anchors are appended in chain order
+    # The anchor is written only after the row has committed, and audit_verify reads anchors before the chain, so a
+    # verifier never sees an anchor for a row it can't see yet. Writing it inside the transaction made every
+    # verification under live traffic report tampering (review round 2, A8).
+    if config.AUDIT_ANCHOR_EVERY and seq % config.AUDIT_ANCHOR_EVERY == 0:
+        with _lock:
+            _write_anchor(seq, h)
     return h
 
 
@@ -362,6 +366,8 @@ def anchor_audit() -> dict[str, Any] | None:
 
 
 def audit_verify() -> dict[str, Any]:
+    p = anchor_path()
+    anchor_lines = p.read_text(encoding="utf-8").splitlines() if p.exists() else None  # before the chain: see audit()
     prev, n = "GENESIS", 0
     hashes: dict[int, str] = {}
     for r in con().execute("SELECT seq, ts, kind, payload, prev_hash, hash FROM audit ORDER BY seq"):
@@ -370,12 +376,11 @@ def audit_verify() -> dict[str, Any]:
         prev, n = r["hash"], n + 1
         hashes[r["seq"]] = r["hash"]
     anchors = 0
-    p = anchor_path()
-    if n and config.AUDIT_ANCHOR_EVERY and not p.exists():
+    if n and config.AUDIT_ANCHOR_EVERY and anchor_lines is None:
         # rows exist but the anchor file is gone: that is itself tampering (or lost evidence), not "nothing to check"
         return {"ok": False, "broken_at_seq": None, "checked": n, "reason": "anchors_missing"}
-    if p.exists():
-        for line in p.read_text(encoding="utf-8").splitlines():
+    if anchor_lines is not None:
+        for line in anchor_lines:
             if not line.strip():
                 continue
             a = json.loads(line)

@@ -112,6 +112,10 @@ PAY_TERMS = _rx(
     r"[€$£₹]\s?\d[\d,.]*",
     r"\b(?:eur|usd|gbp|inr|rs\.?)\s?\d[\d,.]*",
     r"\b\d[\d,.]*\s?(?:eur|euros?|usd|rupees|rs)\b",
+    # review round 2: amounts in other currencies ("30 reais by Pix") were not money words at all
+    r"[¥₽₺₩₱]\s?\d[\d,.]*|\bR\$\s?\d[\d,.]*",
+    r"\b\d[\d,.]*\s?(?:reais|brl|pln|zł|zl|złotych|try|tl|lira|liras|jpy|yen|rub|rubles?|roubles?|aed|dirhams?|chf|"
+    r"francs?|sek|nok|dkk|kr|czk|huf|mxn|pesos?|ars|cop|thb|baht|idr|rupiah|myr|ringgit|sgd|aud|cad|zar|rand)\b",
     r"भुगतान",
     r"पेमेंट",
     r"पैसे",
@@ -144,7 +148,7 @@ CARD_DATA = _rx(
     r"expiry date",
     r"bank (?:details|account details|information)",
     r"\biban\b",
-    r"\bswift\b",
+    r"\bswift(?:/bic)?\s*(?:code|number)\b",  # not "swift check-in" (found while fixing review round 2)
     r"re-?enter (?:your )?(?:card|payment)",
     r"verify (?:your )?(?:card|payment (?:method|details))",
     r"card verification",
@@ -219,6 +223,28 @@ OFF_PLATFORM_PAYMENT = _rx(
     r"virement",
     r"überweisung",
     r"bonifico",
+    # review round 2: other instant-payment rails and wallets (Pix was missing entirely)
+    r"\bpix\b",
+    r"\brevolut\b",
+    r"\bwise\.com\b|\bvia wise\b|\bwise transfer\b",
+    r"\bzelle\b",
+    r"\bvenmo\b",
+    r"\bcash ?app\b",
+    r"\bskrill\b",
+    r"\bbizum\b",
+    r"\bblik\b",
+    r"\bmb ?way\b",
+    r"\balipay\b",
+    r"\bwe ?chat ?pay\b",
+    r"\bpaypal(?:\.me)?\b",
+    r"\bpayoneer\b",
+    r"\biban\b",
+    r"\bswift(?:/bic)? code\b|\bbic code\b",
+    r"\bsepa\b",
+    r"\bprzelew\w*",
+    r"\bhavale\b|\beft\b",
+    r"перевод\w*|переве\w*",
+    r"振込|转账|轉帳|汇款",
 )
 
 # Moving the conversation or payment away from the platform.
@@ -461,7 +487,9 @@ def _luhn_ok(digits: str) -> bool:
     return total % 10 == 0
 
 
-CARD_RX = re.compile(r"\b(?:\d[ -]?){13,19}\b")
+# Any single separator between digits, and no word boundary needed: "4111/1111/1111/1111" and "4111111111111111exp"
+# reached storage before (review round 2, A7). Luhn-checked in mask_pii.
+CARD_RX = re.compile(r"(?<!\d)\d(?:[ \-/_,.]?\d){12,18}(?!\d)")
 EMAIL_RX = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
 UPI_RX = re.compile(r"\b[\w.-]+@(?:ok\w+|ybl|paytm|upi|ibl|axl)\b", re.IGNORECASE)
 IBAN_RX = re.compile(r"\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}(?:\s?[A-Z0-9]{1,3})?\b")
@@ -495,6 +523,14 @@ def mask_pii(text: str) -> tuple[str, list[str]]:
         (m.start(), m.start() + len(u)) for m in URL_RX.finditer(text) if (u := _accept_candidate(m, text)) and "://" in u
     ]
 
+    def authority_end(a: int, b: int) -> int:
+        body = text[a:b]
+        start = body.find("://") + 3
+        ends = [i for i in (body.find(c, start) for c in "/?#\\") if i != -1]
+        return a + (min(ends) if ends else len(body))
+
+    authority_spans = [(a, authority_end(a, b)) for a, b in link_spans]
+
     def card_sub(m: re.Match[str]) -> str:
         digits = re.sub(r"\D", "", m.group())
         if 13 <= len(digits) <= 19 and _luhn_ok(digits):
@@ -503,8 +539,8 @@ def mask_pii(text: str) -> tuple[str, list[str]]:
         return m.group()
 
     def email_sub(m: re.Match[str]) -> str:
-        if any(a <= m.start() < b for a, b in link_spans):
-            return m.group()  # inside a link: userinfo, not an e-mail
+        if any(a <= m.start() < b for a, b in authority_spans):
+            return m.group()  # in a link's authority: userinfo, not an e-mail. Path and query e-mails are masked (round 2)
         kinds.append("EMAIL")
         return "[EMAIL]"
 
@@ -521,8 +557,18 @@ def mask_pii(text: str) -> tuple[str, list[str]]:
 # ----------------------------------------------------------------------------------------------
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?।])\s+|\n+")
 # Clause boundaries inside a sentence: punctuation and contrast words ("..., but please transfer ...").
+# Review round 2: joining the reassurance and the ask with "and" / "so" / "just" and no comma kept them in one clause,
+# so the whole ask was dropped with the reassurance. Connectives that start a new instruction now split too.
 CLAUSE_SPLIT = re.compile(
-    r"[,;:]\s*|\s+(?=(?:but|however|still|though|although|yet|except|instead|anyway|nevertheless|pero|mais|aber|ma|mas)\b)",
+    r"[,;:]\s*|\s+(?=(?:but|however|still|though|although|yet|except|instead|anyway|nevertheless|pero|mais|aber|ma|mas"
+    r"|and|so|just|simply|then|now|please|kindly|plus|also|y|e|et|und|und dann|então|entonces|donc|dann|quindi|bas|aur|toh)\b)",
+    re.IGNORECASE,
+)
+# An instruction verb inside a reassured clause, AFTER the reassurance, that is not itself negated or an infinitive
+# ("we never ask you to send ..."): "Your stay is paid at the property confirm your card number here" is still an ask.
+IMPERATIVE = re.compile(
+    r"(?<!\bto )(?<!\bnot )(?<!n't )(?<!\bnever )\b(?:confirm|share|send|transfer|wire|enter|provide|update|verify|"
+    r"give|deposit|top up|scan|reply|forward|type|write)\b",
     re.IGNORECASE,
 )
 
@@ -542,6 +588,9 @@ class TextSignals:
     injection: bool = False
     hidden_chars: bool = False
     obfuscated: bool = False  # leetspeak / spaced letters hid a signal
+    # a card or payment-rail mention that was set aside only because a reassurance shared its clause; the engine never
+    # delivers such a message on the quiet fast path (review round 2, A1/B1)
+    reassured_sensitive: bool = False
     mixed_script: list[str] = field(default_factory=list)
     urls: list[str] = field(default_factory=list)
     evidence: dict[str, list[str]] = field(default_factory=dict)
@@ -678,6 +727,11 @@ def extract(text: str) -> TextSignals:
     t = normalise(text)  # evidence quotes come from the normalised text, which equals the original for clean input
     s = _extract(t)
     s.hidden_chars = bool(ZERO_WIDTH.search(text))
+    # Fullwidth Latin letters ("Ｃｏｍｐｌｅｔｅ") are NFKC-folded before matching; a hotel has no reason to write them, so
+    # they are obfuscation (review round 2, A6).
+    if re.search(r"[\uff21-\uff3a\uff41-\uff5a]", text):
+        s.obfuscated = True
+        s.add("deobfuscated", ["fullwidth letters"])
     s.mixed_script = has_mixed_script_word(text)
     d = deobfuscate(t)
     # Links written to dodge extraction: "guest-step-portal\u3002net", "[.]", "(.)", " . ". Browsers and chat apps
@@ -744,6 +798,12 @@ def _extract(t: str) -> TextSignals:
         for c in calm:
             s.add("reassurance", _spans(REASSURE, c))
         sent = " ".join(c for c in clauses if not REASSURE.search(c))
+        for c in calm:
+            tail = c[[m.end() for m in REASSURE.finditer(c)][-1] :]
+            # a tail that starts "to ..." / "for ..." is the object of the reassurance ("never ask you to send ... or
+            # share ..."), not a new instruction
+            if IMPERATIVE.search(tail) and not re.match(r"\s*(?:you\s+)?(?:to|for)\b", tail, re.IGNORECASE):
+                sent += " " + tail
         card_spans += _spans(CARD_DATA, sent)
         rail_spans += _spans(OFF_PLATFORM_PAYMENT, sent)
         if any(PAY_TERMS.search(c) for c in calm):
@@ -781,6 +841,7 @@ def _extract(t: str) -> TextSignals:
         s.money_ask = s.soft_money_ask = True
         s.add("money_ask", unreassured_pay[:3])
     s.card_data, s.off_platform_payment = bool(card_spans), bool(rail_spans)
+    s.reassured_sensitive = not (card_spans or rail_spans) and bool(_spans(CARD_DATA, t) or _spans(OFF_PLATFORM_PAYMENT, t))
     s.evidence.pop("card_data", None)
     s.evidence.pop("off_platform_payment", None)
     s.add("card_data", card_spans)

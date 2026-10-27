@@ -113,6 +113,30 @@ def wilson(k: int, n: int, z: float = 1.96) -> list[float] | None:
     return [round(max(0.0, c - h), 4), round(min(1.0, c + h), 4)]
 
 
+REQUIRED = {"id", "text", "label", "terms", "category", "lang", "split"}
+TERMS = {"pay_at_property", "prepaid", "deposit"}
+
+
+def validate_rows(rows: list[dict[str, Any]]) -> None:
+    """Refuse to run a set whose rows would be silently mis-scored: a missing `terms` defaults to "unknown", which
+    switches off the payment-terms rule (review round 2, C5). Checks metadata only, never the text."""
+    bad = [x.get("id") for x in rows if not set(x) >= REQUIRED or x["terms"] not in TERMS or x["label"] not in (0, 1)]
+    if bad or not rows:
+        raise SystemExit(f"refusing to evaluate: {len(bad)} malformed rows (first: {bad[:5]}) or an empty set")
+
+
+def mcnemar_exact(a: list[bool], b: list[bool]) -> dict[str, Any]:
+    """Exact two-sided McNemar test on paired outcomes (same messages, two systems). Review round 2 (C1): overlapping
+    intervals are not a test of a paired difference."""
+    from math import comb
+
+    only_a = sum(1 for x, y in zip(a, b, strict=True) if x and not y)
+    only_b = sum(1 for x, y in zip(a, b, strict=True) if y and not x)
+    n = only_a + only_b
+    p = min(1.0, 2 * sum(comb(n, k) for k in range(min(only_a, only_b) + 1)) / 2**n) if n else 1.0
+    return {"only_first": only_a, "only_second": only_b, "p_value": round(p, 5)}
+
+
 def section_a(rows: list[dict[str, Any]], engine: Engine, engine_nobl: Engine, sms_only: Any) -> dict[str, Any]:
     y = [x["label"] for x in rows]
     systems: dict[str, dict[str, Any]] = {}
@@ -121,7 +145,8 @@ def section_a(rows: list[dict[str, Any]], engine: Engine, engine_nobl: Engine, s
     systems["baseline_blocklist_only"] = score(y, bl)
     sp = [sms_only.predict_proba([prep(x["text"])])[0, 1] >= 0.5 for x in rows]
     systems["baseline_generic_spam_filter"] = score(y, sp)
-    systems["baseline_stayguard_classifier_only"] = score(y, [engine.clf.score(x["text"]) >= config.MODEL_HIGH for x in rows])
+    clf_only = [engine.clf.score(x["text"]) >= config.MODEL_HIGH for x in rows]
+    systems["baseline_stayguard_classifier_only"] = score(y, clf_only)
     # Review round 1 (C8): a blocklist can only catch URLs already in the feeds. Report how many there are, so a 0%
     # blocklist row is read as "no listed URLs in this set", not as a measured weakness of blocklists.
     urls = [u for x in rows for u in extract(x["text"]).urls]
@@ -136,6 +161,15 @@ def section_a(rows: list[dict[str, Any]], engine: Engine, engine_nobl: Engine, s
         return ds
 
     full = run(engine, "stayguard_full")
+    full_flag = [d.decision in ("hold", "block") for d in full]
+    scam_idx = [i for i, v in enumerate(y) if v]
+    legit_idx = [i for i, v in enumerate(y) if not v]
+    paired = {
+        "full_vs_classifier_only_on_scams": mcnemar_exact([full_flag[i] for i in scam_idx], [clf_only[i] for i in scam_idx]),
+        "full_vs_classifier_only_on_legit_holds": mcnemar_exact(
+            [full_flag[i] for i in legit_idx], [clf_only[i] for i in legit_idx]
+        ),
+    }
     rules_only = [
         any(t.get("decided") for t in d.trace if t["stage"] == "rules") and d.decision in ("hold", "block") for d in full
     ]
@@ -146,7 +180,9 @@ def section_a(rows: list[dict[str, Any]], engine: Engine, engine_nobl: Engine, s
     f["catch_rate_ci95"] = wilson(f["tp"], f["tp"] + f["fn"])
     f["false_alarm_rate_ci95"] = wilson(f["fp"], f["fp"] + f["tn"])
 
-    per_cat: dict[str, dict[str, Any]] = defaultdict(lambda: {"n": 0, "correct": 0})
+    # held / warned / delivered clean per category, because "accuracy" counts a legit message delivered under a scam
+    # banner as correct (review round 2, C6)
+    per_cat: dict[str, dict[str, Any]] = defaultdict(lambda: {"n": 0, "correct": 0, "held": 0, "warned": 0, "clean": 0})
     per_lang: dict[str, dict[str, Any]] = defaultdict(lambda: {"n": 0, "correct": 0})
     paths: dict[str, int] = defaultdict(int)
     errors = []
@@ -156,6 +192,7 @@ def section_a(rows: list[dict[str, Any]], engine: Engine, engine_nobl: Engine, s
         for bucket, key in ((per_cat, x["category"]), (per_lang, x["lang"])):
             bucket[key]["n"] += 1
             bucket[key]["correct"] += int(ok)
+        per_cat[x["category"]]["held" if flagged else "warned" if d.decision == "warn" else "clean"] += 1
         paths[d.path] += 1
         if not ok or (x["label"] == 0 and d.decision == "warn"):
             errors.append(
@@ -181,6 +218,7 @@ def section_a(rows: list[dict[str, Any]], engine: Engine, engine_nobl: Engine, s
         "per_category": dict(per_cat),
         "per_language": dict(per_lang),
         "paths": dict(paths),
+        "paired_tests": paired,
         "errors_and_warnings": errors,
     }
 
@@ -316,11 +354,19 @@ def section_f(rows: list[dict[str, Any]], engine: Engine) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for kind in MUTATIONS:
         rng = random.Random(kind)
-        ds = [engine.check(_mutate(x["text"], kind, rng), ctx_for(x), record=False) for x in scams]
+        mutated = [_mutate(x["text"], kind, rng) for x in scams]
+        ds = [engine.check(m, ctx_for(x), record=False) for m, x in zip(mutated, scams, strict=True)]
         caught = sum(d.decision in ("hold", "block") for d in ds)
+        # Review round 2 (C10): a rewrite that leaves a message unchanged (no deadline to strip, no link to swap) still
+        # sat in the denominator. Report the rate on the messages the rewrite actually changed, and how many that is.
+        # Zero-width characters are stripped by normalise() before any rule, so that row checks the stripping.
+        changed = [i for i, (m, x) in enumerate(zip(mutated, scams, strict=True)) if m != x["text"]]
+        caught_changed = sum(ds[i].decision in ("hold", "block") for i in changed)
         out[kind] = {
             "n": len(scams),
+            "n_changed": len(changed),
             "catch_rate": round(caught / len(scams), 4) if scams else None,
+            "catch_rate_changed_only": round(caught_changed / len(changed), 4) if changed else None,
             "missed_ids": [x["id"] for x, d in zip(scams, ds, strict=True) if d.decision not in ("hold", "block")][:15],
         }
     rng = random.Random(0)
@@ -444,10 +490,20 @@ def to_md(r: dict[str, Any]) -> str:
             f"StayGuard caught {pct(vf['catch_rate'], 1)}{ci(vf['catch_rate_ci95'])} of scams and falsely held "
             f"{pct(vf['false_alarm_rate'], 1)}{ci(vf['false_alarm_rate_ci95'])} of legitimate messages (95% Wilson).",
             "",
-            "| Category | n | Accuracy |",
-            "|---|---|---|",
+            "| Category | n | Accuracy | Held | Warned | Delivered clean |",
+            "|---|---|---|---|---|---|",
         ]
-        lines += [f"| {k} | {x['n']} | {pct(x['accuracy'])} |" for k, x in sorted(V["per_category"].items())]
+        lines += [
+            f"| {k} | {x['n']} | {pct(x['accuracy'])} | {x.get('held')} | {x.get('warned')} | {x.get('clean')} |"
+            for k, x in sorted(V["per_category"].items())
+        ]
+        vp = V["paired_tests"]["full_vs_classifier_only_on_scams"]
+        lines += [
+            "",
+            f"Paired exact McNemar test vs StayGuard's classifier alone on the same scams: full caught {vp['only_first']} "
+            f"the classifier missed, the classifier caught {vp['only_second']} the full system missed, p = {vp['p_value']}. "
+            f"Messages that crashed and failed closed: {V['paths'].get('fail_closed', 0)}.",
+        ]
         lines += ["", "| Language | n | Accuracy |", "|---|---|---|"]
         lines += [f"| {k} | {x['n']} | {pct(x['accuracy'])} |" for k, x in sorted(V["per_language"].items())]
         lines += ["", "Misses, false holds and warned legit messages:", ""]
@@ -461,8 +517,8 @@ def to_md(r: dict[str, Any]) -> str:
         "## A. Messages: StayGuard vs baselines (dev and held-out v1)",
         "",
         f"Dev: {A['dev']['n']} hand-written messages ({A['dev']['n_scam']} scams). Held-out: {A['heldout']['n']} messages "
-        f"({A['heldout']['n_scam']} scams) built from cited public scam reports and hotel templates "
-        "(`data/curated/HELDOUT_SOURCES.md`).",
+        f"({A['heldout']['n_scam']} scams; 10 reuse wording quoted in a cited report, the rest paraphrase reported patterns "
+        "or were written by the rules' author; `data/curated/HELDOUT_SOURCES.md`). Not blind after its first run.",
         "",
         "| System | Held-out v1 caught | Held-out v1 false holds | Dev caught | Dev false holds |",
         "|---|---|---|---|---|",
@@ -494,8 +550,24 @@ def to_md(r: dict[str, Any]) -> str:
             "held-out results makes the current held-out numbers less blind than the first look.",
             "",
         ]
-    lines += ["Held-out accuracy by category:", "", "| Category | n | Accuracy |", "|---|---|---|"]
-    lines += [f"| {k} | {v['n']} | {pct(v['accuracy'])} |" for k, v in sorted(A["heldout"]["per_category"].items())]
+    lines += [
+        "Held-out v1 by category:",
+        "",
+        "| Category | n | Accuracy | Held | Warned | Delivered clean |",
+        "|---|---|---|---|---|---|",
+    ]
+    lines += [
+        f"| {k} | {v['n']} | {pct(v['accuracy'])} | {v.get('held')} | {v.get('warned')} | {v.get('clean')} |"
+        for k, v in sorted(A["heldout"]["per_category"].items())
+    ]
+    pt = A["heldout"]["paired_tests"]["full_vs_classifier_only_on_scams"]
+    lines += [
+        "",
+        f"Paired exact McNemar test, full system vs its classifier alone, on the same held-out v1 scams: full caught "
+        f"{pt['only_first']} the classifier missed, the classifier caught {pt['only_second']} the full system missed, "
+        f"p = {pt['p_value']}.",
+        "",
+    ]
     lines += ["", "Held-out accuracy by language:", "", "| Language | n | Accuracy |", "|---|---|---|"]
     lines += [f"| {k} | {v['n']} | {pct(v['accuracy'])} |" for k, v in sorted(A["heldout"]["per_language"].items())]
     for split in ("heldout", "dev"):
@@ -548,10 +620,17 @@ def to_md(r: dict[str, Any]) -> str:
         "",
         "## F. Robustness: scams rewritten to dodge filters",
         "",
-        "| Rewrite | Held-out caught | Dev caught |",
+        "Held-out v1 (not blind). The changed-only rate excludes scams the rewrite left unchanged; zero-width characters "
+        "are stripped before any rule, so that row checks the stripping, not a new attack.",
+        "",
+        "| Rewrite | Held-out v1 caught | Dev caught |",
         "|---|---|---|",
     ]
-    lines += [f"| {k} | {pct(F['heldout'][k]['catch_rate'])} | {pct(F['dev'][k]['catch_rate'])} |" for k in MUTATIONS]
+    lines += [
+        f"| {k} | {pct(F['heldout'][k]['catch_rate'])} (changed only: {pct(F['heldout'][k].get('catch_rate_changed_only'))}, "
+        f"n={F['heldout'][k].get('n_changed')}) | {pct(F['dev'][k]['catch_rate'])} |"
+        for k in MUTATIONS
+    ]
     lines += [
         "",
         "Legit held-out messages with zero-width characters inserted: "
@@ -623,6 +702,8 @@ def headline(r: dict[str, Any]) -> dict[str, Any]:
         "c3_heldout_fp": C["heldout"]["c3_false_positive_rate"],
         "c3_heldout_n": C["heldout"]["c3_n"],
         "robust_combined_heldout": F["heldout"]["combined"]["catch_rate"],
+        "robust_combined_heldout_changed": F["heldout"]["combined"]["catch_rate_changed_only"],
+        "heldout_mcnemar_p": A["heldout"]["paired_tests"]["full_vs_classifier_only_on_scams"]["p_value"],
         "judge_share": E["judge_share"],
         "hotel_judge_share": E["hotel_heldout_judge_share"],
         "hotel_est_cost_per_1000": E["hotel_heldout_est_cost_per_1000_usd"],
@@ -657,6 +738,13 @@ def headline_v2(fl: dict[str, Any]) -> dict[str, Any]:
     f = A["systems"]["stayguard_full"]
     cat = A["per_category"]
     return {
+        "v2_fail_closed_crashes": A["paths"].get("fail_closed", 0),
+        "v2_legit_payment_held": cat.get("legit_payment", {}).get("held"),
+        "v2_legit_payment_warned": cat.get("legit_payment", {}).get("warned"),
+        "v2_legit_payment_clean": cat.get("legit_payment", {}).get("clean"),
+        "v2_mcnemar_p": A["paired_tests"]["full_vs_classifier_only_on_scams"]["p_value"],
+        "v2_only_full": A["paired_tests"]["full_vs_classifier_only_on_scams"]["only_first"],
+        "v2_only_classifier": A["paired_tests"]["full_vs_classifier_only_on_scams"]["only_second"],
         "v2_n": A["n"],
         "v2_n_scam": A["n_scam"],
         "v2_caught": f["catch_rate"],
@@ -694,6 +782,9 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--out", type=Path, default=config.EVAL_DIR)
     ap.add_argument("--heldout-v2", action="store_true", help="also run the blind held-out v2 set (freezes its first look)")
     args = ap.parse_args(argv)
+    if args.heldout_v2 and args.fast:
+        # a fast run would show v2 results without freezing them (review round 2, C5)
+        raise SystemExit("--heldout-v2 cannot be combined with --fast: its one blind run must be frozen")
     t0 = time.time()
     print("training classifier ...")
     _, crep, _ = train(save=True)
@@ -724,8 +815,11 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     )
     v2 = None
     if args.heldout_v2:
-        print("A held-out v2 (blind) ...")
+        if FIRST_LOOK_V2.exists():
+            print("NOTE: held-out v2 already had its blind run; this run is NOT blind and is not quoted")
         v2rows = [x for x in load_rows("heldout_v2.jsonl") if x.get("split") == "heldout_v2"]
+        validate_rows(v2rows)
+        print("A held-out v2 (blind) ...")
         v2 = section_a(v2rows, engine, engine_nobl, sms_only)
     report: dict[str, Any] = {
         "generated": time.strftime("%Y-%m-%d %H:%M"),

@@ -71,6 +71,17 @@ class JudgeUnavailable(Exception):
     pass
 
 
+# Messages longer than this are cut before they reach a judge; a long message could otherwise push the reply past
+# max_tokens (review round 2, A5).
+MAX_JUDGE_CHARS = 4000
+
+
+class JudgeReplyUnusable(Exception):
+    """The provider answered, but the reply text can't be used for this message (no JSON, truncated JSON, bad verdict).
+    Message content can provoke this, so it is NOT a provider failure: it holds the one message and leaves the shared
+    breaker alone (review round 2, A5)."""
+
+
 # ----------------------------------------------------------------------------------------------
 # Circuit breaker
 # ----------------------------------------------------------------------------------------------
@@ -96,26 +107,31 @@ class CircuitBreaker:
             return "half-open" if self.clock() - self.opened_at > self.cooldown else "open"
         return "closed"
 
-    def allow(self) -> bool:
+    def allow(self) -> str:
+        """ "closed" or "probe" if the call may go ahead, "" if not. The caller passes probe=(ticket == "probe") back, so
+        only the probe itself can free the probe slot: a call that started while closed and finished during half-open
+        used to clear it and admit a second probe (review round 2, A10)."""
         with self._lock:
             state = self.state
             if state == "closed":
-                return True
+                return "closed"
             if state == "half-open" and not self.probe_in_flight:
                 self.probe_in_flight = True
-                return True
-            return False
+                return "probe"
+            return ""
 
-    def release_probe(self) -> None:
+    def release_probe(self, probe: bool = True) -> None:
         """Called when a judge call ends in something that is neither success nor provider failure (a bug). Without
         this, a half-open probe that hit a bug left probe_in_flight set forever and the judges never came back
         (review round 1)."""
         with self._lock:
-            self.probe_in_flight = False
+            if probe:
+                self.probe_in_flight = False
 
-    def record(self, ok: bool) -> None:
+    def record(self, ok: bool, probe: bool = True) -> None:
         with self._lock:
-            self.probe_in_flight = False
+            if probe:
+                self.probe_in_flight = False
             if ok:
                 self.failures = 0
             else:
@@ -154,8 +170,27 @@ def validate_quotes(quotes: list[str], message: str) -> tuple[list[str], list[st
             continue
         seen.add(n)
         trivial = len(n) < 3 or all(w in _STOPWORDS for w in re.findall(r"\w+", n))
+
+        # Overlapping pieces of one phrase ("hotel", "the hotel", "at the hotel") are one piece of evidence: keep the
+        # longest, reject the rest (review round 2, A11).
+        def key(x: str) -> str:
+            return re.sub(r"[^\w\s]", "", _norm(x)).strip()
+
+        overlaps = any(key(q) in key(o) or key(o) in key(q) for o in ok)
         # trivial quotes are reported as rejected (not silently dropped) so the case file shows what the judge tried
-        (ok if (not trivial and n in msg) else bad).append(q)
+        if not trivial and n in msg and not overlaps:
+            ok.append(q)
+        elif not trivial and n in msg and overlaps:
+            longer = [o for o in ok if key(o) in key(q) and key(o) != key(q)]
+            if longer:
+                for o in longer:
+                    ok.remove(o)
+                    bad.append(o)
+                ok.append(q)
+            else:
+                bad.append(q)
+        else:
+            bad.append(q)
     return ok, bad
 
 
@@ -301,7 +336,8 @@ class AnthropicJudge:
     def _ask(self, role: str, masked: str, ctx: dict[str, Any]) -> JudgeOpinion:
         user = (
             f"Booking context: payment terms = {ctx.get('payment_terms')}, direction = {ctx.get('direction')}, "
-            f"sender session risk = {ctx.get('session_level')}.\n<untrusted_message>\n{masked}\n</untrusted_message>"
+            f"sender session risk = {ctx.get('session_level')}.\n"
+            f"<untrusted_message>\n{masked[:MAX_JUDGE_CHARS]}\n</untrusted_message>"
         )
         r = httpx.post(
             "https://api.anthropic.com/v1/messages",
@@ -309,7 +345,7 @@ class AnthropicJudge:
             headers={"x-api-key": self.api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
             json={
                 "model": self.model,
-                "max_tokens": 300,
+                "max_tokens": 600,
                 "system": SYSTEM.format(role=role, brief=BRIEFS[role]),
                 "messages": [{"role": "user", "content": user}],
             },
@@ -323,23 +359,26 @@ class AnthropicJudge:
         text = "".join(str(b.get("text", "")) for b in body["content"] if isinstance(b, dict))
         m = re.search(r"\{.*\}", text, re.DOTALL)
         if not m:
-            raise JudgeUnavailable("judge returned no JSON")
-        data = json.loads(m.group())
+            raise JudgeReplyUnusable("judge returned no JSON")
+        try:
+            data = json.loads(m.group())
+        except json.JSONDecodeError as e:
+            raise JudgeReplyUnusable("truncated or invalid JSON") from e
         # The reply is untrusted too: a malformed one is a provider failure, not a crash.
         if not isinstance(data, dict):
-            raise JudgeUnavailable("reply is not a JSON object")
+            raise JudgeReplyUnusable("reply is not a JSON object")
         verdict = data.get("verdict")
         if verdict not in ("scam", "legit"):
-            raise JudgeUnavailable("bad verdict")
+            raise JudgeReplyUnusable("bad verdict")
         try:
             confidence = float(data.get("confidence", 0.5))
         except (TypeError, ValueError) as e:
-            raise JudgeUnavailable("bad confidence") from e
+            raise JudgeReplyUnusable("bad confidence") from e
         if confidence != confidence:  # NaN
-            raise JudgeUnavailable("bad confidence")
+            raise JudgeReplyUnusable("bad confidence")
         evidence = data.get("evidence", [])
         if not isinstance(evidence, list):
-            raise JudgeUnavailable("evidence is not a list")
+            raise JudgeReplyUnusable("evidence is not a list")
         ok, bad = validate_quotes([str(q) for q in evidence][:6], masked)
         return JudgeOpinion(role, verdict, max(0.0, min(1.0, confidence)), ok, bad, str(data.get("rationale", ""))[:300])
 
@@ -363,6 +402,9 @@ class AnthropicJudge:
         for th in threads:
             th.join(max(0.0, deadline - time.monotonic()))
         pro, de = results.get("prosecutor"), results.get("defender")
+        for r in (pro, de):
+            if isinstance(r, JudgeReplyUnusable):
+                raise r  # content-shaped: hold this message, don't feed the breaker
         for r in (pro, de):
             if r is None:
                 raise JudgeUnavailable("judge timed out")

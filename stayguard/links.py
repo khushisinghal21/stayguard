@@ -179,7 +179,57 @@ USER_CONTENT_HOSTS = (
     "airtable.com",
     "t.me",
     "wa.me",
+    # review round 2: popular platforms where anyone can publish a page or a form were still vouched as POPULAR_DOMAIN
+    "wordpress.com",
+    "blogger.com",
+    "medium.com",
+    "substack.com",
+    "tumblr.com",
+    "github.com",
+    "gitlab.com",
+    "gitlab.io",
+    "bitbucket.io",
+    "codepen.io",
+    "jsfiddle.net",
+    "pastebin.com",
+    "telegra.ph",
+    "script.google.com",
+    "script.googleusercontent.com",
+    "notion.so",
+    "carrd.co",
+    "ghost.io",
+    "square.site",
+    "myshopify.com",
+    "godaddysites.com",
+    "jimdosite.com",
+    "strikingly.com",
+    "site123.me",
+    "mailchimpsites.com",
+    "hs-sites.com",
+    "bubbleapps.io",
+    "wix.com",
+    "formstack.com",
+    "surveymonkey.com",
+    "tally.so",
+    "zohopublic.com",
+    "web.core.windows.net",
+    "azurewebsites.net",
+    "appspot.com",
+    "cloudfront.net",
 )
+# Redirect endpoints of popular sites whose target is encoded (base64 and the like), so it can't be checked offline.
+REDIRECTORS = (
+    ("bing.com", "/ck/"),
+    ("google.com", "/url"),
+    ("l.facebook.com", "/"),
+    ("lm.facebook.com", "/"),
+    ("l.instagram.com", "/"),
+    ("t.co", "/"),
+    ("linkedin.com", "/redir"),
+    ("youtube.com", "/redirect"),
+)
+# Subdomains of popular sites that are services, not tenants: these may keep the popularity discount.
+SERVICE_SUBDOMAINS = {"www", "m", "mobile", "maps", "translate", "support", "help", "en", "accounts", "play", "apps"}
 # Country TLDs that are free or heavily abused; a brand name on them is never assumed to be the brand's own site.
 ABUSED_CCTLDS = {"tk", "ml", "ga", "cf", "gq", "cm", "ws", "cc", "to", "nu", "la", "pw", "su"}
 KNOWN_SAFE_HOSTS = {"maps.app.goo.gl", "goo.gl"}  # google maps share links (path-checked below)
@@ -238,7 +288,9 @@ class LinkVerdict:
         }
 
 
-EMBEDDED_URL = re.compile(r"(?:https?|hxxps?)://[^\s&#]+", re.IGNORECASE)
+# Non-greedy: stop at the next embedded scheme, so ".../redirect/https://a/redirect/https://evil" yields both targets
+# (review round 2, A3: the greedy form returned one URL whose host was the official domain).
+EMBEDDED_URL = re.compile(r"(?:https?|hxxps?)://(?:(?!(?:https?|hxxps?)://)[^\s&#])+", re.IGNORECASE)
 PARAM_VALUE = re.compile(r"[?&#;](?:[\w.-]*=)?([^&#\s]+)")
 
 
@@ -250,7 +302,12 @@ def embedded_targets(url: str) -> list[str]:
     # find the host case-insensitively: splitting the original-case URL on the lower-case host raised IndexError for
     # "https://WWW.Booking.com/..." and every such message failed closed (found by the post-fix evaluation run)
     i = url.lower().find(host) if host else -1
-    rest = unquote(url[i + len(host) :] if i >= 0 else url)
+    rest = url[i + len(host) :] if i >= 0 else url
+    for _ in range(3):  # double- and triple-encoded targets ("https%253A%252F%252Fevil") are decoded too
+        decoded = unquote(rest)
+        if decoded == rest:
+            break
+        rest = decoded
     rest = rest[rest.find("/") :] if "/" in rest else rest
     out = EMBEDDED_URL.findall(rest)
     for m in PARAM_VALUE.finditer(rest):
@@ -258,6 +315,16 @@ def embedded_targets(url: str) -> list[str]:
         if "://" not in v and "." in v and is_public_host(host_of(v)):
             out.append(v)
     return out
+
+
+def urlsplit_path(url: str) -> str:
+    u = url.strip().replace("\\", "/")
+    if "://" not in u:
+        u = "http://" + u
+    try:
+        return urlsplit(u).path or "/"
+    except ValueError:
+        return "/"
 
 
 class LinkChecker:
@@ -285,9 +352,17 @@ class LinkChecker:
         """Check a link. If it carries another URL in its query string (an open redirect, even on an official
         domain), the embedded URL is checked too and the worse verdict wins."""
         outer = self._check(url, property_domains)
-        inner_urls = embedded_targets(url)
+        # every target, nested ones included, up to a bound (round 2, A3: only the first three were checked, and a
+        # target's own embedded targets never were)
+        inner_urls: list[str] = []
+        frontier = embedded_targets(url)
+        while frontier and len(inner_urls) < 20:
+            u = frontier.pop(0)
+            if u not in inner_urls:
+                inner_urls.append(u)
+                frontier += embedded_targets(u)
         worst = outer
-        for inner in inner_urls[:3]:
+        for inner in inner_urls:
             v = self._check(inner, property_domains)
             if v.score > worst.score or (worst.verdict == "official" and v.verdict != "official"):
                 worst = LinkVerdict(
@@ -406,9 +481,25 @@ class LinkChecker:
             if (ext.suffix or "") in INSTITUTIONAL or (ext.suffix or "").split(".")[0] in ("edu", "gov", "ac"):
                 score -= 0.3
                 reasons.append("INSTITUTIONAL_DOMAIN")
+            path = urlsplit_path(url)
+            if any((host == rh or host.endswith("." + rh)) and path.startswith(rp) for rh, rp in REDIRECTORS):
+                score += 0.35
+                reasons.append("OPEN_REDIRECTOR")
             popular = rd in _top_domains() or host in _top_domains()
-            hosted = any(r in reasons for r in ("FREE_SITE_BUILDER", "URL_SHORTENER_HIDES_DESTINATION", "USER_CONTENT_HOST"))
-            if popular and not hosted:
+            hosted = any(
+                r in reasons
+                for r in ("FREE_SITE_BUILDER", "URL_SHORTENER_HIDES_DESTINATION", "USER_CONTENT_HOST", "OPEN_REDIRECTOR")
+            )
+            if hosted:
+                # a page anyone can publish is never "safe" (round 2, A4: a popular free host scored 0.25, "safe")
+                score = max(score, 0.3)
+            # A tenant subdomain of a popular platform (ourhotel.somepopularsite.com) is not the popular site itself: no
+            # popularity discount, and it counts as unvouched. Any list of user-content hosts is incomplete (round 2).
+            sub = (ext.subdomain or "").lower()
+            if popular and not hosted and sub and sub.split(".")[0] not in SERVICE_SUBDOMAINS and host not in _top_domains():
+                score += 0.1
+                reasons.append("POPULAR_PLATFORM_SUBDOMAIN")
+            elif popular and not hosted:
                 score -= 0.35
                 reasons.append("POPULAR_DOMAIN")
             elif not popular:
