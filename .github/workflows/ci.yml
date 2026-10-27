@@ -28,7 +28,7 @@ jobs:
       - name: Lint
         run: ruff check . && ruff format --check .
       - name: Types
-        run: mypy stayguard
+        run: python -m mypy stayguard
       - name: Tests with coverage
         run: pytest --cov=stayguard --cov-report=json --cov-report=term
       - name: Coverage gates (85% overall, 95% on the decision path)

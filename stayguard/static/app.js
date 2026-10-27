@@ -276,7 +276,9 @@ loaders.results = async () => {
   const ev = m.evaluation;
   const root = $("#results");
   if (!ev) { root.replaceChildren(h("p", {}, "No evaluation yet. Run python -m eval.evaluate, then reload.")); return; }
-  const A = ev.A_golden, B = ev.B_real_sms, C = ev.C_zero_day_links, D = ev.D_sessions, E = ev.E_cost_latency, F = ev.F_robustness;
+  // Every field read below is listed in tests/test_eval_harness.py, which checks it exists in a real report.
+  const A = ev.A_messages, B = ev.B_real_sms, C = ev.C_links, D = ev.D_sessions, E = ev.E_cost_latency, F = ev.F_robustness;
+  const FL = ev.heldout_first_look;
   const SYS = {
     baseline_blocklist_only: "Phishing blocklist only", baseline_generic_spam_filter: "Generic spam filter",
     stayguard_rules_only: "StayGuard, rules only", stayguard_full: "StayGuard",
@@ -285,34 +287,42 @@ loaders.results = async () => {
   const bar = (v, bad) => h("div", { class: "bar2" }, h("i", { class: bad ? "bad" : "", style: `width:${Math.max(2, (v || 0) * 160)}px` }), pct(v));
   const MUT = { no_urgency: "Deadline removed", neutral_new_domain: "Fresh brand-free domain", leetspeak: "Leetspeak (c@rd)",
                 zero_width: "Hidden characters", spaced_letters: "Spaced letters (p a y)", combined: "All of the above" };
+  const H = A.heldout.systems.stayguard_full;
   root.replaceChildren(
-    h("h1", {}, "How well it works, on data it never trained on"),
+    h("h1", {}, "How well it works, on messages it was never tuned on"),
+    h("p", { class: "muted" }, `Held-out: ${A.heldout.n} messages built from cited public scam reports, written after the rules and never used to tune them. ` +
+      `Dev: ${A.dev.n} messages written alongside the rules, so dev numbers are optimistic.`),
     h("div", { class: "lead" },
-      h("div", {}, h("b", {}, pct(B.real_ham.held_or_blocked_rate, 2)), h("span", {}, `of ${B.real_ham.n.toLocaleString()} real everyday messages wrongly held`)),
-      h("div", {}, h("b", {}, pct(C.c3_false_positive_rate, 2)), h("span", {}, `of ${C.c3_unseen_legit_domains.toLocaleString()} real legit domains flagged`)),
-      h("div", {}, h("b", {}, pct(F.combined.catch_rate)), h("span", {}, "of hand-written scams still caught after being rewritten to dodge filters")),
-      h("div", {}, h("b", {}, `$${E.cost_per_1000_messages_usd}`), h("span", {}, `AI cost per 1,000 messages, vs $${E.cost_per_1000_if_every_message_went_to_llm_usd} if every message went to an LLM`))),
+      h("div", {}, h("b", {}, pct(H.catch_rate)), h("span", {}, `of ${A.heldout.n_scam} held-out scams stopped`)),
+      h("div", {}, h("b", {}, pct(H.false_alarm_rate, 1)), h("span", {}, `of ${A.heldout.n_legit} held-out normal messages wrongly held`)),
+      h("div", {}, h("b", {}, pct(C.heldout.c3_false_positive_rate, 3)), h("span", {}, `of ${C.heldout.c3_n.toLocaleString()} unseen legit domains flagged`)),
+      h("div", {}, h("b", {}, `$${E.est_cost_per_1000_messages_usd}`), h("span", {}, `estimated AI cost per 1,000 messages ($${E.est_cost_per_1000_if_every_message_went_to_llm_usd} if all went to the judges)`))),
+    FL ? h("p", { class: "muted" }, `First blind run on the held-out set (${FL.generated}): ${pct(FL.A_messages_heldout.systems.stayguard_full.catch_rate)} stopped, ` +
+      `${pct(FL.A_messages_heldout.systems.stayguard_full.false_alarm_rate, 1)} wrongly held. Later changes were driven by a separate red-team suite, but the held-out misses had been seen, so current numbers are less blind than that first run.`) : null,
     h("div", { class: "rsec" }, h("h2", {}, "Against the alternatives"),
-      h("p", {}, `${A.n} hand-written hotel messages in 8 languages (${A.n_scam} scams, ${A.n_legit} normal). The same team wrote the rules, so StayGuard's numbers here are optimistic; the sections below use independent real data.`),
-      h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "System"), h("th", {}, "Scams caught"), h("th", {}, "Normal messages held"))),
-        h("tbody", {}, Object.entries(A.systems).map(([k, v]) => h("tr", { class: k === "stayguard_full" ? "ours" : "" },
-          h("td", {}, SYS[k] || k), h("td", {}, bar(v.catch_rate)), h("td", {}, bar(v.false_alarm_rate, true)))))))),
+      h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "System"), h("th", {}, "Held-out stopped"),
+        h("th", {}, "Held-out wrongly held"), h("th", {}, "Dev stopped"), h("th", {}, "Dev wrongly held"))),
+        h("tbody", {}, Object.keys(SYS).map((k) => h("tr", { class: k === "stayguard_full" ? "ours" : "" },
+          h("td", {}, SYS[k]), h("td", {}, bar(A.heldout.systems[k].catch_rate)), h("td", {}, bar(A.heldout.systems[k].false_alarm_rate, true)),
+          h("td", {}, pct(A.dev.systems[k].catch_rate)), h("td", {}, pct(A.dev.systems[k].false_alarm_rate)))))))),
     h("div", { class: "rsec" }, h("h2", {}, "When attackers rewrite the scam"),
-      h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Rewrite"), h("th", {}, "Still caught"))),
-        h("tbody", {}, Object.entries(F).filter(([, v]) => v.catch_rate !== undefined).map(([k, v]) =>
-          h("tr", {}, h("td", {}, MUT[k] || k), h("td", {}, bar(v.catch_rate))))))),
-      h("p", {}, `Normal messages with hidden characters inserted: ${pct(F.legit_with_zero_width.held_rate)} held, ${pct(F.legit_with_zero_width.warned_rate)} delivered with a warning.`)),
-    h("div", { class: "rsec" }, h("h2", {}, "Links nobody has reported yet"),
-      h("p", {}, `With the blocklist switched off: ${pct(C.c1_detection_rate)} of ${C.c1_brand_lookalikes_withheld} real Booking look-alike phishing hosts are still flagged; ` +
-        `${pct(C.c2_detection_rate)} of a random ${C.c2_random_feed_sample.toLocaleString()} from the whole feed (any brand, so the blocklist does that job); ` +
-        `${pct(C.c3_false_positive_rate, 2)} of ${C.c3_unseen_legit_domains.toLocaleString()} real legit domains outside the top 10k are flagged.`)),
+      h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Rewrite"), h("th", {}, "Held-out still stopped"), h("th", {}, "Dev"))),
+        h("tbody", {}, Object.keys(MUT).map((k) =>
+          h("tr", {}, h("td", {}, MUT[k]), h("td", {}, bar(F.heldout[k].catch_rate)), h("td", {}, pct(F.dev[k].catch_rate)))))))),
+    h("div", { class: "rsec" }, h("h2", {}, "Links nobody has reported yet (blocklist off)"),
+      h("p", {}, `Held-out: ${pct(C.heldout.c1_detection_rate)} of ${C.heldout.c1_n} real Booking look-alike phishing hosts flagged; ` +
+        `${pct(C.heldout.c2_detection_rate)} of ${C.heldout.c2_n.toLocaleString()} random hosts from the whole feed (any brand, so the blocklist does that job); ` +
+        `${pct(C.heldout.c3_false_positive_rate, 3)} of ${C.heldout.c3_n.toLocaleString()} legit domains never looked at during tuning.`)),
+    h("div", { class: "rsec" }, h("h2", {}, "Ordinary chat"),
+      h("p", {}, `${B.real_ham.n.toLocaleString()} real personal SMS sent through as if a hotel wrote them: ${pct(B.real_ham.held_or_blocked_rate, 2)} held, ` +
+        `${pct(B.real_ham.warned_rate, 2)} warned. These are not hotel messages, so this shows StayGuard rarely gets in the way of normal chat; it doesn't measure false holds on real hotel traffic.`)),
     h("div", { class: "rsec" }, h("h2", {}, "Hijacked logins (synthetic)"),
       h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Attack"), h("th", {}, "Flagged risky"), h("th", {}, "Flagged critical"))),
         h("tbody", {}, Object.keys(D.recall_at_risky).map((k) => h("tr", {}, h("td", {}, k.replaceAll("_", " ")),
           h("td", {}, bar(D.recall_at_risky[k])), h("td", {}, bar(D.recall_at_critical[k]))))))),
-      h("p", {}, `False alarms on normal logins: ${pct(D.fpr_at_risky, 2)}. Malware on the hotel's own PC looks like a normal login, which is why every message is checked on its own.`)),
+      h("p", {}, `False alarms on normal logins: ${pct(D.fpr_at_risky, 2)}. Synthetic data is separable by construction. Malware on the hotel's own PC looks like a normal login, which is why every message is checked on its own.`)),
     h("div", { class: "rsec" }, h("h2", {}, "Speed and cost"),
-      h("p", {}, `On a 1,000-message mix (97% normal): ${pct(E.judge_share, 1)} reached the AI judges; p50 ${E.p50_ms} ms, p95 ${E.p95_ms} ms. Real bookings in the dataset: ${m.dataset.reservations.toLocaleString()}, of which ${pct(m.dataset.share_pay_at_property, 1)} are paid at the hotel.`)));
+      h("p", {}, `${E.mix}: ${pct(E.judge_share, 1)} reached the AI judges; p50 ${E.p50_ms} ms, p95 ${E.p95_ms} ms. ${E.note} Real bookings in the dataset: ${m.dataset.reservations.toLocaleString()}, of which ${pct(m.dataset.share_pay_at_property, 1)} are paid at the hotel.`)));
 };
 
 // ------------------------------------------------------------------ audit

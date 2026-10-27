@@ -9,5 +9,5 @@ run:       ; uvicorn stayguard.api:app --port 8000
 demo:      ; STAYGUARD_DEMO_MODE=1 uvicorn stayguard.api:app --port 8000
 test:      ; pytest --cov=stayguard --cov-report=json --cov-report=term && python scripts/check_coverage.py coverage.json
 lint:      ; ruff check . && ruff format --check .
-types:     ; mypy stayguard
+types:     ; python -m mypy stayguard
 check:     lint types test
