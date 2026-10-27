@@ -68,7 +68,7 @@ def plot(rel_by_source: dict[str, list[dict]], low: float, high: float, path: Pa
     fig.patch.set_facecolor("#fcfcfb")
     ax.set_facecolor("#fcfcfb")
     ax.plot([0, 1], [0, 1], color="#b7b6ae", lw=1, ls="--", zorder=1)
-    ax.text(0.97, 0.9, "perfectly calibrated", color="#52514e", fontsize=8, ha="right", rotation=39)
+    ax.text(0.83, 0.70, "perfectly calibrated", color="#52514e", fontsize=8, ha="center", rotation=39)
     for src, rows in rel_by_source.items():
         x = [r["mean_predicted"] for r in rows]
         yv = [r["observed_scam_rate"] for r in rows]
@@ -81,6 +81,8 @@ def plot(rel_by_source: dict[str, list[dict]], low: float, high: float, path: Pa
     ax.set_xlabel("Model's scam probability (bin average)", color="#52514e")
     ax.set_ylabel("Share that really were scams", color="#52514e")
     ax.set_title("Reliability of the language model", color="#0b0b0b", loc="left", fontsize=11)
+    fig.text(0.02, 0.01, "Middle bins hold few messages, so they jump; per-bin counts are in eval/calibration.json.",
+             color="#52514e", fontsize=7)
     ax.grid(color="#e8e7e2", lw=0.6)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)

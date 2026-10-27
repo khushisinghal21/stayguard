@@ -34,24 +34,41 @@ Guests get a **"Is this really from my hotel?"** check, and hotels are protected
 Hand-written by us (and labelled as such): hotel message seeds for training (EN/HI/Hinglish/ES/PT/FR/DE/IT),
 a separate 115-message golden + red-team set, and synthetic login telemetry (real account-takeover logs are private).
 
-## Results (from `eval/report.md`)
+## Results (rendered from `eval/report.json` by `scripts/render_docs.py`)
 
+<!-- results:start -->
 | | |
 |---|---|
-| Real everyday messages wrongly held (1,207 held-out SMS, strictest setting) | **0.00%** |
-| Real legit domains flagged (99,967 domains outside the top 10k) | **0.01%** |
-| Real Booking look-alike phishing hosts caught with the blocklist **off** | **91%** |
-| Scams caught (golden set) — StayGuard vs generic spam filter vs blocklist | **100%** vs 62% vs 17% |
-| Normal messages held (golden set) — StayGuard vs generic spam filter | **0%** vs 24% |
-| Scams still caught after rewriting (no deadline + fresh domain + leetspeak) | **95%** |
-| Scams caught with the AI judges down | **97%** |
-| Share of messages that need an LLM / LLM cost per 1,000 messages | **0.1% / $0.0016** (vs $1.60 if every message went to an LLM) |
-| Latency p50 / p95 (excluding network) | **~3 ms / ~5 ms** |
+| Held-out scams caught (written from cited public reports, never tuned on) | **66.7%** of 66 |
+| Held-out legitimate messages wrongly held / delivered with a warning | **1.7%** / 1.7% |
+| Same held-out set: generic spam filter caught / wrongly held | 27.3% / 3.5% |
+| Same held-out set: phishing blocklist alone caught | 0% |
+| Held-out scams caught with the AI judges down | 66.7% |
+| Held-out scams caught after rewriting (no deadline + fresh domain + leetspeak) | 43.9% |
+| Dev set (written alongside the rules): caught / wrongly held | 100% / 0% |
+| Real everyday SMS wrongly held (1,207 messages, domain-shifted) | 0% |
+| Unseen legit domains flagged (99,969 domains, ranks 110k-210k) | 0.006% |
+| Unseen Booking look-alike phishing hosts flagged, blocklist off (182 hosts) | 88.5% |
+| Random phishing hosts from the whole feed flagged, blocklist off | 3.7% |
+| Messages sent to the AI judges / estimated LLM cost per 1,000 messages | 0.2% / $0.0004 (vs $0.1988 if every message went to the judges) |
+| Latency p50 / p95 (in-process, offline judge) | 3.0 ms / 5.2 ms |
+<!-- results:end -->
 
-Honest caveats, also in the report: the golden set was written by the same team as the rules, so it is
-optimistic — the real-data sections are the ones to trust. The login model runs on synthetic data, and it
-scores **0%** on malware running on the hotel's own PC (the login looks normal). That is the reason every
-message is still checked on its own.
+### Honest caveats
+
+1. **Read held-out, not dev.** Until 27 Oct 2026 every message number here came from a set written alongside the
+   rules and used to tune them (100% caught, 0% false holds). A separately written held-out set, built from cited
+   public scam reports and committed before its first run, gives the numbers above. The first blind run is frozen in
+   `eval/heldout_first_look.json`.
+2. **The held-out set has the same author as the rules.** Citing outside wording and freezing the first look reduce the
+   bias; they don't remove it. Real validation needs labelled platform traffic.
+3. **The SMS false-alarm test is domain-shifted.** Personal SMS rarely ask for money, so 0% held there shows StayGuard
+   rarely interferes with ordinary chat. It does not measure false holds on real hotel traffic.
+4. **The login model runs on synthetic data**, which is separable by construction. It scores **0%** on malware running
+   on the hotel's own PC (the login looks normal), which is why every message is still checked on its own.
+5. **Cost is an estimate** from the published Claude Haiku 5.5 price and estimated token counts, not a bill.
+6. **Thresholds** (`MODEL_LOW`/`MODEL_HIGH`) are chosen on a calibration split by a stated rule (`eval/calibrate.py`),
+   never on held-out data.
 
 ## Run it
 

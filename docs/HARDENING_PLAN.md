@@ -116,3 +116,29 @@ Format: **defect → fix → verification**. Status is updated as work lands.
 ## Status
 
 Updated as each item lands — see the bottom of this file.
+
+### Phase 1 status (commit fe4a82e + follow-ups)
+
+| # | Item | Status | Evidence |
+|---|---|---|---|
+| 1 | Predictable PINs | Fixed | `after_phase1_repro.txt`: no `pin` column, hashed + salted |
+| 2 | Open demo/admin endpoints | Fixed | production mode: demo-pin 404, simulate 404, internal 503 without key |
+| 3 | Idempotency bypass | Fixed | reused key + new text → 409; test rewritten |
+| 4 | Eval tuned on test sets | Fixed, with a deviation | dev/held-out everywhere; held-out committed (`04376a3`) before first run; first look frozen; C3 held-out moved to ranks 110k–210k because both halves of 10k–110k had been read |
+| 5 | Live feeds unreproducible | Fixed | `data/MANIFEST.json`; report stores manifest hash; `--compare` refuses drift |
+| 6 | Judge errors swallowed | Fixed | judge bug → hold `SYSTEM_EXCEPTION_FAIL_CLOSED`, breaker untouched; provider down → degraded, breaker +1 |
+| 7 | No top-level fail-closed | Fixed | classifier exception → hold; dead branch removed; `_touches_money_or_links` |
+| 8 | Unextracted links | Fixed | .ro/.pl/.ws/.lat extracted, .com.br whole, `user@host/path` caught, e-mails skipped |
+| 9 | Containment guessed exposure | Fixed | reads table + endpoint; case file reports `unattributed_reads` instead of guessing |
+| 10 | PII at rest; forgeable audit | Fixed / limit stated | masked storage, retention purge, anchor file; DECISIONS #10 states the remaining limit |
+| 11 | Concurrency/storage | Fixed | 4 cold threads → 1 Service; per-thread connections; persisted attempts; token buckets |
+| 12 | Doc drift | Fixed | README/DECISIONS numbers rendered from report; `tests/test_docs_drift.py` |
+| 13 | Hygiene | Fixed | secret scan clean; model checksum sidecars; CSP + self-hosted fonts |
+
+**Found while doing Phase 1:** the old $0.0016-per-judged-message cost was an unsourced guess (about 6x the published
+Claude Haiku 5.5 price). Replaced with an estimate from the published price and the real prompt length, labelled as an
+estimate everywhere.
+
+**First held-out result (blind):** 66.7% of scams caught, 1.7% of legitimate messages held (dev: 100% / 0%). 16 of the
+22 misses were delivered by the "no payment ask" fast path. Not fixed here: Phase 3's adversarial corpus covers the
+same attack classes independently, and any fix it drives will be reported against the frozen first look.

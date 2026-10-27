@@ -1,0 +1,695 @@
+{
+  "generated": "2026-10-27 08:07",
+  "git_commit": "fe4a82e",
+  "heldout_sha256": "9defc0ab5ab31ab49d821b73ff795153cda580b09b1b3d40fd7b81e89d0b6a5c",
+  "A_messages_heldout": {
+    "n": 124,
+    "n_scam": 66,
+    "n_legit": 58,
+    "systems": {
+      "baseline_blocklist_only": {
+        "tp": 0,
+        "fn": 66,
+        "fp": 0,
+        "tn": 58,
+        "catch_rate": 0.0,
+        "false_alarm_rate": 0.0,
+        "precision": null,
+        "f1": 0.0
+      },
+      "baseline_generic_spam_filter": {
+        "tp": 18,
+        "fn": 48,
+        "fp": 2,
+        "tn": 56,
+        "catch_rate": 0.2727,
+        "false_alarm_rate": 0.0345,
+        "precision": 0.9,
+        "f1": 0.4186
+      },
+      "stayguard_full": {
+        "tp": 44,
+        "fn": 22,
+        "fp": 1,
+        "tn": 57,
+        "catch_rate": 0.6667,
+        "false_alarm_rate": 0.0172,
+        "precision": 0.9778,
+        "f1": 0.7928,
+        "legit_warned_rate": 0.0172,
+        "scam_warned_not_held_rate": 0.0606,
+        "catch_rate_ci95": [
+          0.5466,
+          0.7684
+        ],
+        "false_alarm_rate_ci95": [
+          0.003,
+          0.0914
+        ]
+      },
+      "stayguard_rules_only": {
+        "tp": 29,
+        "fn": 37,
+        "fp": 1,
+        "tn": 57,
+        "catch_rate": 0.4394,
+        "false_alarm_rate": 0.0172,
+        "precision": 0.9667,
+        "f1": 0.6042
+      },
+      "stayguard_zero_day_links_blocklist_off": {
+        "tp": 44,
+        "fn": 22,
+        "fp": 1,
+        "tn": 57,
+        "catch_rate": 0.6667,
+        "false_alarm_rate": 0.0172,
+        "precision": 0.9778,
+        "f1": 0.7928,
+        "legit_warned_rate": 0.0172,
+        "scam_warned_not_held_rate": 0.0606
+      },
+      "stayguard_degraded_llm_down": {
+        "tp": 44,
+        "fn": 22,
+        "fp": 1,
+        "tn": 57,
+        "catch_rate": 0.6667,
+        "false_alarm_rate": 0.0172,
+        "precision": 0.9778,
+        "f1": 0.7928,
+        "legit_warned_rate": 0.0172,
+        "scam_warned_not_held_rate": 0.0606
+      }
+    },
+    "per_category": {
+      "reported_wording": {
+        "n": 10,
+        "correct": 9,
+        "accuracy": 0.9
+      },
+      "reported_pattern": {
+        "n": 37,
+        "correct": 26,
+        "accuracy": 0.7027
+      },
+      "unsupported_language": {
+        "n": 6,
+        "correct": 3,
+        "accuracy": 0.5
+      },
+      "obfuscated": {
+        "n": 5,
+        "correct": 2,
+        "accuracy": 0.4
+      },
+      "injection": {
+        "n": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "guest_to_hotel_malware": {
+        "n": 3,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "overpayment": {
+        "n": 3,
+        "correct": 2,
+        "accuracy": 0.6667
+      },
+      "legit_template": {
+        "n": 6,
+        "correct": 6,
+        "accuracy": 1.0
+      },
+      "legit_self_service": {
+        "n": 5,
+        "correct": 5,
+        "accuracy": 1.0
+      },
+      "legit_payment": {
+        "n": 10,
+        "correct": 9,
+        "accuracy": 0.9
+      },
+      "legit_logistics": {
+        "n": 18,
+        "correct": 18,
+        "accuracy": 1.0
+      },
+      "legit_multilingual": {
+        "n": 13,
+        "correct": 13,
+        "accuracy": 1.0
+      },
+      "legit_guest": {
+        "n": 6,
+        "correct": 6,
+        "accuracy": 1.0
+      }
+    },
+    "per_language": {
+      "en": {
+        "n": 91,
+        "correct": 74,
+        "accuracy": 0.8132
+      },
+      "pt": {
+        "n": 4,
+        "correct": 4,
+        "accuracy": 1.0
+      },
+      "es": {
+        "n": 5,
+        "correct": 5,
+        "accuracy": 1.0
+      },
+      "fr": {
+        "n": 3,
+        "correct": 2,
+        "accuracy": 0.6667
+      },
+      "de": {
+        "n": 3,
+        "correct": 2,
+        "accuracy": 0.6667
+      },
+      "it": {
+        "n": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "hi": {
+        "n": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "hinglish": {
+        "n": 3,
+        "correct": 2,
+        "accuracy": 0.6667
+      },
+      "nl": {
+        "n": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "pl": {
+        "n": 2,
+        "correct": 1,
+        "accuracy": 0.5
+      },
+      "tr": {
+        "n": 2,
+        "correct": 1,
+        "accuracy": 0.5
+      },
+      "ar": {
+        "n": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "zh": {
+        "n": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "ru": {
+        "n": 1,
+        "correct": 0,
+        "accuracy": 0.0
+      }
+    },
+    "paths": {
+      "rule": 102,
+      "model": 17,
+      "judges": 5
+    },
+    "errors_and_warnings": [
+      {
+        "id": "h006",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "reported_wording",
+        "lang": "en",
+        "text": "Good morning, this is the reception. Payments for your stay are handled by our third-party payment processor. You have less than 12 hours to complete it, otherwise the room goes back on sale."
+      },
+      {
+        "id": "h015",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "reported_pattern",
+        "lang": "en",
+        "text": "As this is a verification test, you will see 1 EUR on your statement which is returned straight away. Please do it via the button below so that we can hold your room until Friday."
+      },
+      {
+        "id": "h019",
+        "label": 1,
+        "decision": "warn",
+        "path": "judges",
+        "reasons": [
+          "JUDGES_LEGIT",
+          "UNVERIFIED_LINK"
+        ],
+        "category": "reported_pattern",
+        "lang": "en",
+        "text": "To finish the booking process please fill in the guest form here https://guest-registration-hotel.net/form/5521 . The form asks for the card you will use at check-in."
+      },
+      {
+        "id": "h020",
+        "label": 1,
+        "decision": "warn",
+        "path": "judges",
+        "reasons": [
+          "JUDGES_LEGIT",
+          "UNVERIFIED_LINK"
+        ],
+        "category": "reported_pattern",
+        "lang": "en",
+        "text": "Complete your online check-in here: https://lisbon-checkin-portal.com/r/2291 . Without online check-in we cannot hand over the keys."
+      },
+      {
+        "id": "h025",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "reported_pattern",
+        "lang": "en",
+        "text": "Our records show the card on file expired. Update it on the link we texted you or the booking will be released tonight."
+      },
+      {
+        "id": "h028",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "reported_pattern",
+        "lang": "en",
+        "text": "We are required by law to verify foreign cards before arrival. Please do so in the next 6 hours using the link from reception."
+      },
+      {
+        "id": "h029",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "reported_pattern",
+        "lang": "en",
+        "text": "URGENT: your booking will be auto-cancelled. Call our booking office on +44 20 3769 4410 now and have your card ready."
+      },
+      {
+        "id": "h035",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "reported_pattern",
+        "lang": "fr",
+        "text": "Nous avons le regret de vous informer que votre carte n'a pas passé le contrôle de sécurité. Merci de la confirmer sous 12 heures, sinon votre réservation sera annulée."
+      },
+      {
+        "id": "h037",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "reported_pattern",
+        "lang": "de",
+        "text": "Leider hat Ihre Kreditkarte die Sicherheitsprüfung nicht bestanden. Bitte schließen Sie die Kartenverifizierung innerhalb von 12 Stunden ab, sonst wird Ihre Reservierung storniert."
+      },
+      {
+        "id": "h042",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "reported_pattern",
+        "lang": "hinglish",
+        "text": "Sir hotel ka bank account site se connected nahi hai, aap 3500 rupaye Google Pay kar dijiye isi number pe, receipt bhej dena."
+      },
+      {
+        "id": "h044",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "unsupported_language",
+        "lang": "pl",
+        "text": "Niestety Pana karta nie przeszła weryfikacji. Prosimy potwierdzić kartę w ciągu 12 godzin, w przeciwnym razie rezerwacja zostanie anulowana."
+      },
+      {
+        "id": "h045",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "unsupported_language",
+        "lang": "tr",
+        "text": "Merhaba, rezervasyonunuz iptal edilme riski altında. Lütfen 24 saat içinde kartınızı bu bağlantıdan doğrulayın: https://rezervasyon-dogrula.com/k"
+      },
+      {
+        "id": "h048",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "unsupported_language",
+        "lang": "ru",
+        "text": "К сожалению, ваша карта не прошла проверку безопасности. Подтвердите карту в течение 12 часов, иначе бронирование будет отменено."
+      },
+      {
+        "id": "h051",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "obfuscated",
+        "lang": "en",
+        "text": "Your booking needs a quick confirmation. Scan the QR code in the attached image with your banking app to finish."
+      },
+      {
+        "id": "h052",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "obfuscated",
+        "lang": "en",
+        "text": "Reply YES to keep your room, then follow the instructions we send to complete the guarantee."
+      },
+      {
+        "id": "h053",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "obfuscated",
+        "lang": "en",
+        "text": "Kindly call us back on plus four four, two zero, three seven six nine, four four one zero with your card in hand, the booking expires at noon."
+      },
+      {
+        "id": "h056",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "guest_to_hotel_malware",
+        "lang": "en",
+        "text": "Hello, I booked for next week and I have a medical condition. Could you please look at my doctor's documents before I arrive? The file is password protected, password 2024: https://drive.google.com/file/d/1aX9-medical-docs"
+      },
+      {
+        "id": "h057",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "guest_to_hotel_malware",
+        "lang": "en",
+        "text": "Hi, my wife needs a ground floor room because of her disability. I uploaded the certificate and a map of the access we need here: https://files-share-docs.com/d/88, please print it for reception."
+      },
+      {
+        "id": "h058",
+        "label": 1,
+        "decision": "warn",
+        "path": "judges",
+        "reasons": [
+          "JUDGES_LEGIT",
+          "UNVERIFIED_LINK"
+        ],
+        "category": "guest_to_hotel_malware",
+        "lang": "en",
+        "text": "I am extremely disappointed with my stay and will post a review unless you respond today. See the photos of the dirty room: https://guest-photos-review.com/album/221"
+      },
+      {
+        "id": "h060",
+        "label": 1,
+        "decision": "warn",
+        "path": "judges",
+        "reasons": [
+          "JUDGES_UNSURE"
+        ],
+        "category": "overpayment",
+        "lang": "en",
+        "text": "Hi, I sent the deposit three times because the page froze. Please keep one and send the other two back through Western Union to my cousin, I will give you his details."
+      },
+      {
+        "id": "h064",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "reported_pattern",
+        "lang": "en",
+        "text": "Hi, we upgraded you for free! Just confirm the upgrade with your card on our partner site within 12 hours, otherwise it goes to another guest."
+      },
+      {
+        "id": "h066",
+        "label": 1,
+        "decision": "deliver",
+        "path": "rule",
+        "reasons": [
+          "NO_PAYMENT_ASK"
+        ],
+        "category": "reported_pattern",
+        "lang": "en",
+        "text": "Enter the 6-digit code your bank just sent you so that we can finish the pre-authorisation for your stay."
+      },
+      {
+        "id": "h116",
+        "label": 0,
+        "decision": "hold",
+        "path": "rule",
+        "reasons": [
+          "CARD_DATA_REQUEST"
+        ],
+        "category": "legit_payment",
+        "lang": "en",
+        "text": "We noticed your card details in the app may need updating. Please check them in the Booking.com app under your booking. Never send card numbers to us by message."
+      },
+      {
+        "id": "h132",
+        "label": 0,
+        "decision": "warn",
+        "path": "judges",
+        "reasons": [
+          "JUDGES_UNSURE"
+        ],
+        "category": "legit_logistics",
+        "lang": "en",
+        "text": "Feel free to message us on WhatsApp too if that's easier for you while travelling: +351 21 555 0199."
+      }
+    ]
+  },
+  "C_links_heldout": {
+    "c1_n": 182,
+    "c1_detection_rate": 0.8846,
+    "c1_examples_missed": [
+      "document1083921.aremusbooking.com",
+      "hire.easyinterviewbookingsp.com",
+      "hotelbookingguard.com",
+      "mail.vabookings.com",
+      "sanrafaelriveradventurebooking.com",
+      "shop.bookingyourrooms.com",
+      "bookingbx.com",
+      "bookingwhizz.co.uk",
+      "hotelbookingapp.vercel.app",
+      "bookingoyvip.com"
+    ],
+    "c2_n": 3000,
+    "c2_detection_rate": 0.0373,
+    "c3_ranks": [
+      110000,
+      210000
+    ],
+    "c3_n": 99969,
+    "c3_false_positive_rate": 6e-05,
+    "c3_false_positive_ci95": [
+      0.0,
+      0.0001
+    ],
+    "c3_false_positive_examples": [
+      "booking4you.biz",
+      "fuck-a-girl-goday.com",
+      "q8booking.com",
+      "booking-wp-plugin.com",
+      "expedia.biz",
+      "la-chronique-agora.com"
+    ],
+    "c3_brand_token_n": 49,
+    "c3_brand_token_false_positive_rate": 0.0816,
+    "c3_brand_token_fp_examples": [
+      "booking4you.biz",
+      "q8booking.com",
+      "booking-wp-plugin.com",
+      "expedia.biz"
+    ]
+  },
+  "F_robustness_heldout": {
+    "no_urgency": {
+      "n": 66,
+      "catch_rate": 0.6364,
+      "missed_ids": [
+        "h006",
+        "h015",
+        "h016",
+        "h019",
+        "h020",
+        "h025",
+        "h028",
+        "h029",
+        "h035",
+        "h037",
+        "h042",
+        "h044",
+        "h045",
+        "h048",
+        "h051"
+      ]
+    },
+    "neutral_new_domain": {
+      "n": 66,
+      "catch_rate": 0.5455,
+      "missed_ids": [
+        "h006",
+        "h015",
+        "h019",
+        "h020",
+        "h021",
+        "h022",
+        "h025",
+        "h026",
+        "h028",
+        "h029",
+        "h030",
+        "h035",
+        "h037",
+        "h039",
+        "h042"
+      ]
+    },
+    "leetspeak": {
+      "n": 66,
+      "catch_rate": 0.6515,
+      "missed_ids": [
+        "h006",
+        "h008",
+        "h015",
+        "h019",
+        "h020",
+        "h021",
+        "h025",
+        "h029",
+        "h042",
+        "h044",
+        "h045",
+        "h048",
+        "h051",
+        "h052",
+        "h053"
+      ]
+    },
+    "zero_width": {
+      "n": 66,
+      "catch_rate": 0.8636,
+      "missed_ids": [
+        "h019",
+        "h020",
+        "h044",
+        "h048",
+        "h056",
+        "h057",
+        "h058",
+        "h060",
+        "h066"
+      ]
+    },
+    "spaced_letters": {
+      "n": 66,
+      "catch_rate": 0.6515,
+      "missed_ids": [
+        "h006",
+        "h015",
+        "h019",
+        "h020",
+        "h025",
+        "h028",
+        "h029",
+        "h035",
+        "h037",
+        "h042",
+        "h044",
+        "h045",
+        "h048",
+        "h051",
+        "h052"
+      ]
+    },
+    "combined": {
+      "n": 66,
+      "catch_rate": 0.4394,
+      "missed_ids": [
+        "h006",
+        "h015",
+        "h016",
+        "h017",
+        "h019",
+        "h020",
+        "h021",
+        "h022",
+        "h025",
+        "h026",
+        "h028",
+        "h029",
+        "h030",
+        "h031",
+        "h033"
+      ]
+    },
+    "legit_with_zero_width": {
+      "n": 58,
+      "held_rate": 0.0345,
+      "warned_rate": 0.9655
+    }
+  },
+  "note": "First evaluation ever run on the held-out set. Never overwritten."
+}

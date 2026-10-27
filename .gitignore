@@ -5,3 +5,4 @@ stayguard.db*
 models/
 data/raw/
 data/snapshots/
+.coverage
