@@ -224,7 +224,10 @@ OFF_PLATFORM_PAYMENT = _rx(
     r"überweisung",
     r"bonifico",
     # review round 2: other instant-payment rails and wallets (Pix was missing entirely)
-    r"\bpix\b",
+    # "pix" alone is also slang for pictures: the bare word held a personal SMS in the evaluation's SMS test split
+    # (recorded in DECISIONS #34), so it needs payment context
+    r"\b(?:via|by|por|pelo|pela|com|with|using|chave|key|código|codigo)\s+(?:o\s+)?pix\b|\bpix\s+(?:key|code|copia|"
+    r"payment|transfer|keys?)\b|\bpix\b.{0,40}\b(?:reais|r\$|brl)",
     r"\brevolut\b",
     r"\bwise\.com\b|\bvia wise\b|\bwise transfer\b",
     r"\bzelle\b",

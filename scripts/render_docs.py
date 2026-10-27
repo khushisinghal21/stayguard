@@ -29,6 +29,8 @@ def fmt(key: str, v: object) -> str:
             return f"${v:.4f}"
         if key.endswith("_ms"):
             return f"{v:.1f} ms"
+        if key.endswith("mcnemar_p"):
+            return f"{v:.2g}"
         if key in ("model_low", "model_high"):
             return f"{v:.2f}"
         if key in ("c3_heldout_fp",) or (key.endswith("_held") and v < 0.01 and v > 0):
@@ -57,13 +59,18 @@ def results_table(h: dict) -> str:
                 f"**{f('v2_false_holds')}** ({f('v2_false_holds_ci')}) / {f('v2_legit_warned')}",
             ),
             (
-                f"Held-out v2: legitimate payment messages handled correctly ({f('v2_legit_payment_n')} messages)",
-                f("v2_legit_payment_accuracy"),
+                f"Held-out v2: legitimate payment messages ({f('v2_legit_payment_n')}) held / warned / delivered clean",
+                f"{f('v2_legit_payment_held')} / {f('v2_legit_payment_warned')} / {f('v2_legit_payment_clean')}",
             ),
             (
                 "Held-out v2, same messages: StayGuard's classifier alone / generic spam filter / StayGuard with judges down",
                 f"{f('v2_classifier_only_caught')} / {f('v2_spam_filter_caught')} / {f('v2_degraded_caught')} caught",
             ),
+            (
+                "Held-out v2: scams caught only by the full system / only by its classifier (paired McNemar p)",
+                f"{f('v2_only_full')} / {f('v2_only_classifier')} (p = {f('v2_mcnemar_p')})",
+            ),
+            ("Held-out v2 messages that crashed and failed closed (would count as caught)", f("v2_fail_closed_crashes")),
         ]
     rows += [
         (
@@ -93,8 +100,15 @@ def results_table(h: dict) -> str:
             f("heldout_blocklist_caught"),
         ),
         ("Held-out v1 scams caught with the AI judges down", f("heldout_degraded_caught")),
-        ("Held-out v1 scams caught after rewriting (no deadline + fresh domain + leetspeak)", f("robust_combined_heldout")),
-        ("Dev set (written alongside the rules): caught / wrongly held", f"{f('dev_caught')} / {f('dev_false_holds')}"),
+        (
+            "Held-out v1 scams caught after rewriting (no deadline + fresh domain + leetspeak), not blind: all / changed only",
+            f"{f('robust_combined_heldout')} / {f('robust_combined_heldout_changed')}",
+        ),
+        (
+            "Dev set (written alongside the rules, near-duplicates of some training seeds, used in calibration): caught / "
+            "wrongly held",
+            f"{f('dev_caught')} / {f('dev_false_holds')}",
+        ),
         (
             f"Real everyday SMS wrongly held ({f('sms_ham_n')} messages, domain-shifted; 95% CI)",
             f"{f('sms_ham_held')} ({f('sms_ham_held_ci')})",
@@ -116,7 +130,11 @@ def results_table(h: dict) -> str:
             f"(vs {f('est_cost_per_1000_all_llm')} if every message went to the judges)",
         ),
         ("Evaluation messages that crashed and failed closed (counted as caught if non-zero)", f("fail_closed_crashes")),
-        ("Latency p50 / p95 (in-process, offline judge)", f"{f('p50_ms')} / {f('p95_ms')}"),
+        (
+            "Latency p50 / p95, in-process with the offline judge on the SMS-heavy mix (a hosted LLM would add an estimated "
+            "1-3 s to every judged message, so p95 on hotel messages would be seconds)",
+            f"{f('p50_ms')} / {f('p95_ms')}",
+        ),
     ]
     return "\n".join(["| | |", "|---|---|"] + [f"| {a} | {b} |" for a, b in rows])
 
