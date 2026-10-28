@@ -113,8 +113,10 @@ def test_tenants_on_popular_platforms_are_never_safe_even_behind_www(url):
     assert v.verdict != "safe" and "POPULAR_DOMAIN" not in v.reasons, (v.verdict, v.reasons)
 
 
-def test_language_subdomains_of_popular_sites_stay_safe():
-    assert LinkChecker(use_blocklist=False).check("https://pt.wikipedia.org/wiki/Lisboa").verdict == "safe"
+def test_language_subdomains_of_popular_sites_are_unvouched_since_round_4():
+    # Round 3 exempted two-letter labels; round 4 (A7) showed "lh.webnode.com" kept the discount that way. Accepted
+    # cost: a link to pt.wikipedia.org is now delivered with a warning.
+    assert LinkChecker(use_blocklist=False).check("https://pt.wikipedia.org/wiki/Lisboa").verdict == "unknown"
 
 
 # ---------------------------------------------------------------------------------------------- A5 containment in flight

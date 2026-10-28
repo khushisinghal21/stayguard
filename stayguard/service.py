@@ -326,8 +326,8 @@ class Service:
                     "message_id": mid,
                     "reservation_id": reservation_id,
                     "session_id": session_id,
-                    "decision": d.decision,
-                    "reasons": d.reasons,
+                    "decision": out["decision"],
+                    "reasons": out["reasons"],
                     "path": d.path,
                     "masked_text": d.masked_text,
                     "versions": out["versions"],
@@ -479,39 +479,42 @@ class Service:
     def _contain(
         self, case_id: str, t0: float, prop: dict[str, Any], property_id: str, session_id: str | None, actor: str
     ) -> dict[str, Any]:
-        c = db.con()
-        sessions = [
-            dict(r)
-            for r in c.execute(
-                "SELECT id, user, level, risk, reasons FROM sessions WHERE property_id=? AND status='active'", (property_id,)
-            )
-        ]
-        msgs = (
-            [
+        # Every read and the revoke happen in ONE write transaction: a message that committed between reading the
+        # session's messages and revoking it was delivered, missing from the case file and its guest never warned
+        # (round 4, A5). Message inserts take the same lock, so they land either before (and are in the file) or after
+        # (and see the revoke).
+        with db.tx() as t:
+            sessions = [
                 dict(r)
-                for r in c.execute(
-                    "SELECT id, reservation_id, decision, reasons, text, created FROM messages "
-                    "WHERE session_id=? ORDER BY created",
-                    (session_id,),
+                for r in t.execute(
+                    "SELECT id, user, level, risk, reasons FROM sessions WHERE property_id=? AND status='active'", (property_id,)
                 )
             ]
-            if session_id
-            else []
-        )
-        attacker = self.session(session_id) or {}
-        ev_row = c.execute("SELECT event FROM sessions WHERE id=?", (session_id,)).fetchone() if session_id else None
-        ev = json.loads(ev_row[0]) if ev_row else {}
-        # Guests at risk = every reservation the session actually opened (reported by the extranet) + everyone it
-        # messaged. If login telemetry claims more reads than were reported, we say so instead of guessing who.
-        messaged = sorted({m["reservation_id"] for m in msgs if m["reservation_id"]})
-        read = (
-            sorted(r[0] for r in c.execute("SELECT reservation_id FROM reservation_reads WHERE session_id=?", (session_id,)))
-            if session_id
-            else []
-        )
-        to_warn = sorted(set(messaged) | set(read))
-        unattributed = max(0, int(ev.get("reservations_viewed", 0)) - len(read))
-        with db.tx() as t:
+            msgs = (
+                [
+                    dict(r)
+                    for r in t.execute(
+                        "SELECT id, reservation_id, decision, reasons, text, created FROM messages "
+                        "WHERE session_id=? ORDER BY created",
+                        (session_id,),
+                    )
+                ]
+                if session_id
+                else []
+            )
+            attacker = self.session(session_id) or {}
+            ev_row = t.execute("SELECT event FROM sessions WHERE id=?", (session_id,)).fetchone() if session_id else None
+            ev = json.loads(ev_row[0]) if ev_row else {}
+            # Guests at risk = every reservation the session actually opened (reported by the extranet) + everyone it
+            # messaged. If login telemetry claims more reads than were reported, we say so instead of guessing who.
+            messaged = sorted({m["reservation_id"] for m in msgs if m["reservation_id"]})
+            read = (
+                sorted(r[0] for r in t.execute("SELECT reservation_id FROM reservation_reads WHERE session_id=?", (session_id,)))
+                if session_id
+                else []
+            )
+            to_warn = sorted(set(messaged) | set(read))
+            unattributed = max(0, int(ev.get("reservations_viewed", 0)) - len(read))
             t.execute("UPDATE sessions SET status='revoked' WHERE property_id=? AND status='active'", (property_id,))
             t.execute(
                 "UPDATE properties SET password_reset_required=1, payout_frozen_until=? WHERE id=?",

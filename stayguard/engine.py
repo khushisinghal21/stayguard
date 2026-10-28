@@ -32,6 +32,8 @@ BANNERS = {
     "payment nahi maangta. Sirf Booking.com app me ya hotel pe hi pay karein.",
 }
 
+MAX_LINKS = 20
+
 REASON_TEXT = {
     "NO_PAYMENT_ASK": "No payment request and no risky links.",
     "PAY_ASK_ON_PAY_AT_HOTEL": "Asks for payment, but this booking is paid at the property - nothing is due before arrival.",
@@ -51,6 +53,7 @@ REASON_TEXT = {
     "JUDGES_LEGIT": "AI judges agree it is a normal message.",
     "DEGRADED_WARN": "AI review unavailable - delivered with a warning (normal session).",
     "REASSURANCE_NEXT_TO_PAYMENT": "A reassurance sits next to payment or card words - delivered with a warning.",
+    "TOO_MANY_LINKS": "The message carries an unusual number of links - delivered with a warning at most.",
     "JUDGE_REPLY_UNUSABLE": "The AI review could not be completed for this message - held for a human.",
     "DEGRADED_RISKY_SESSION": "AI review unavailable and the sender's session is risky - held.",
     "RISKY_SESSION": "Sender's login looks unusual, so the decision was made one step stricter.",
@@ -238,7 +241,11 @@ class Engine:
 
         # 2. links -------------------------------------------------------------------------
         s = time.perf_counter()
-        lv = [self.links.check(u, set(ctx.get("property_domains", []))) for u in sig.urls]
+        # each distinct link once, at most MAX_LINKS (round 4, A6: thousands of links made one check take ~1.5 s);
+        # a message with more distinct links than that is itself suspicious
+        urls = list(dict.fromkeys(sig.urls))
+        too_many_links = len(urls) > MAX_LINKS
+        lv = [self.links.check(u, set(ctx.get("property_domains", []))) for u in urls[:MAX_LINKS]]
         worst = max((v.score for v in lv), default=0.0)
         stage("links", s, checked=len(lv), worst=round(worst, 3))
 
@@ -258,6 +265,8 @@ class Engine:
 
         # 3. fast rules --------------------------------------------------------------------
         s = time.perf_counter()
+        if too_many_links:
+            escalate("warn", "TOO_MANY_LINKS")
         if sig.injection:
             escalate("hold", "PROMPT_INJECTION_ATTEMPT")
             ev("injection", sig.evidence.get("injection", []))

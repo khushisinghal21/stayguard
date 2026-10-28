@@ -3,11 +3,13 @@
 Every section reports DEV and HELD-OUT separately. Dev data was looked at while building the rules. Held-out v1 was
 blind only for its first run (frozen in eval/heldout_first_look.json); later fixes targeted its misses. Held-out v2
 is run once with --heldout-v2 and its frozen first run is the only v2 number quoted. The SMS test split is never
-trained on or used for calibration, but rule changes were checked against it (and one was narrowed because of it).
+trained on or used for calibration, but rule changes were checked against it, and two rules were narrowed because of it
+(DECISIONS #34).
 
 A. Messages. Dev = data/curated/golden_eval.jsonl (115, hand-written alongside the rules). Held-out =
-   data/curated/heldout_eval.jsonl (124, built from cited public scam reports and hotel templates, committed
-   before its first run). StayGuard vs baselines. The very first held-out run is frozen in
+   data/curated/heldout_eval.jsonl (124; 10 of its 66 scams reuse wording quoted in a cited report, the rest paraphrase
+   reported patterns or were written by the rules' author; committed before its first run). StayGuard vs
+   baselines. The very first held-out run is frozen in
    eval/heldout_first_look.json and never overwritten.
 B. Real false alarms: the SMS test split (never trained on or calibrated on; used as a check during rule work),
    pushed through the full pipeline as hotel->guest on a pay-at-property booking. Domain-shifted: these are personal
@@ -28,6 +30,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 import statistics
 import subprocess
@@ -94,16 +97,16 @@ def score(y: list[int], flagged: list[bool], warned: list[bool] | None = None) -
         "fn": fn,
         "fp": fp,
         "tn": tn,
-        "catch_rate": round(tp / (tp + fn), 4) if tp + fn else None,
-        "false_alarm_rate": round(fp / (fp + tn), 4) if fp + tn else None,
-        "precision": round(tp / (tp + fp), 4) if tp + fp else None,
-        "f1": round(float(f1_score(y, flagged, zero_division=0)), 4) if any(y) else None,
+        "catch_rate": round(tp / (tp + fn), 6) if tp + fn else None,
+        "false_alarm_rate": round(fp / (fp + tn), 6) if fp + tn else None,
+        "precision": round(tp / (tp + fp), 6) if tp + fp else None,
+        "f1": round(float(f1_score(y, flagged, zero_division=0)), 6) if any(y) else None,
     }
     if warned is not None:
         legit_warned = sum(1 for a, f, w in zip(y, flagged, warned, strict=True) if not a and w and not f)
-        out["legit_warned_rate"] = round(legit_warned / (fp + tn), 4) if fp + tn else None
+        out["legit_warned_rate"] = round(legit_warned / (fp + tn), 6) if fp + tn else None
         scam_warned = sum(1 for a, f, w in zip(y, flagged, warned, strict=True) if a and w and not f)
-        out["scam_warned_not_held_rate"] = round(scam_warned / (tp + fn), 4) if tp + fn else None
+        out["scam_warned_not_held_rate"] = round(scam_warned / (tp + fn), 6) if tp + fn else None
     return out
 
 
@@ -191,6 +194,7 @@ def section_a(rows: list[dict[str, Any]], engine: Engine, engine_nobl: Engine, s
     # banner as correct (review round 2, C6)
     per_cat: dict[str, dict[str, Any]] = defaultdict(lambda: {"n": 0, "correct": 0, "held": 0, "warned": 0, "clean": 0})
     per_lang: dict[str, dict[str, Any]] = defaultdict(lambda: {"n": 0, "correct": 0})
+    per_cat_terms: dict[str, dict[str, int]] = defaultdict(lambda: {"held": 0, "warned": 0, "clean": 0})
     paths: dict[str, int] = defaultdict(int)
     errors = []
     for x, d in zip(rows, full, strict=True):
@@ -199,7 +203,10 @@ def section_a(rows: list[dict[str, Any]], engine: Engine, engine_nobl: Engine, s
         for bucket, key in ((per_cat, x["category"]), (per_lang, x["lang"])):
             bucket[key]["n"] += 1
             bucket[key]["correct"] += int(ok)
-        per_cat[x["category"]]["held" if flagged else "warned" if d.decision == "warn" else "clean"] += 1
+        outcome = "held" if flagged else "warned" if d.decision == "warn" else "clean"
+        per_cat[x["category"]][outcome] += 1
+        # by payment terms too: the legit-payment limitation is about no-deposit bookings only (round 4, C5)
+        per_cat_terms[f"{x['category']}|{x.get('terms', 'unknown')}"][outcome] += 1
         paths[d.path] += 1
         if not ok or (x["label"] == 0 and d.decision == "warn"):
             errors.append(
@@ -224,6 +231,7 @@ def section_a(rows: list[dict[str, Any]], engine: Engine, engine_nobl: Engine, s
         "systems": systems,
         "per_category": dict(per_cat),
         "per_language": dict(per_lang),
+        "per_category_terms": {k: dict(v) for k, v in per_cat_terms.items()},
         "paths": dict(paths),
         "paired_tests": paired,
         "errors_and_warnings": errors,
@@ -248,9 +256,9 @@ def section_b(engine: Engine, fast: bool) -> dict[str, Any]:
         out[name] = {
             "n": n,
             "decisions": dict(dec),
-            "held_or_blocked_rate": round(held / n, 4) if n else None,
+            "held_or_blocked_rate": round(held / n, 6) if n else None,
             "held_ci95": wilson(held, n),
-            "warned_rate": round(dec["warn"] / n, 4) if n else None,
+            "warned_rate": round(dec["warn"] / n, 6) if n else None,
             "fail_closed": sum(d.path == "fail_closed" for d in ds),
         }
         if label == 0:
@@ -307,24 +315,24 @@ def section_c(fast: bool) -> dict[str, Any]:
         brandy_fp = [d for d in brandy if _flagged(nobl, d)]
         out[split] = {
             "c1_n": len(c1[split]),
-            "c1_detection_rate": round(len(c1_hit) / len(c1[split]), 4) if c1[split] else None,
+            "c1_detection_rate": round(len(c1_hit) / len(c1[split]), 6) if c1[split] else None,
             "c1_examples_missed": [h for h in c1[split] if h not in set(c1_hit)][:10],
             "c2_n": len(c2),
-            "c2_detection_rate": round(c2_hit / len(c2), 4) if c2 else None,
+            "c2_detection_rate": round(c2_hit / len(c2), 6) if c2 else None,
             "c3_ranks": list(ranges[split]),
             "c3_n": len(legit),
             "c3_false_positive_rate": round(len(fps) / len(legit), 5) if legit else None,
             "c3_false_positive_ci95": wilson(len(fps), len(legit)),
             "c3_false_positive_examples": fps[:12],
             "c3_brand_token_n": len(brandy),
-            "c3_brand_token_false_positive_rate": round(len(brandy_fp) / len(brandy), 4) if brandy else None,
+            "c3_brand_token_false_positive_rate": round(len(brandy_fp) / len(brandy), 6) if brandy else None,
             "c3_brand_token_fp_examples": brandy_fp[:8],
         }
     with open(config.OPENPHISH, encoding="utf-8") as fh:
         op = [line.strip() for line in fh if line.strip()]
     out["openphish_n"] = len(op)
     out["openphish_heuristic_detection_rate"] = (
-        round(sum(nobl.check(u).verdict in ("malicious", "suspicious") for u in op) / len(op), 4) if op else None
+        round(sum(nobl.check(u).verdict in ("malicious", "suspicious") for u in op) / len(op), 6) if op else None
     )
     out["note"] = (
         "Heuristics exist for links nobody has reported yet; in production the blocklist runs too. A flagged legit "
@@ -367,23 +375,25 @@ def section_f(rows: list[dict[str, Any]], engine: Engine) -> dict[str, Any]:
         crashes = sum(d.path == "fail_closed" for d in ds)
         # Review round 2 (C10): a rewrite that leaves a message unchanged (no deadline to strip, no link to swap) still
         # sat in the denominator. Report the rate on the messages the rewrite actually changed, and how many that is.
-        # Zero-width characters are stripped by normalise() before any rule, so that row checks the stripping.
+        # Zero-width characters are stripped before any rule AND flag the message as obfuscated, so that row measures the
+        # obfuscation flag (it raises catches), not robustness to a new attack (round 4, C8).
         changed = [i for i, (m, x) in enumerate(zip(mutated, scams, strict=True)) if m != x["text"]]
         caught_changed = sum(ds[i].decision in ("hold", "block") for i in changed)
         out[kind] = {
             "n": len(scams),
             "n_changed": len(changed),
             "fail_closed": crashes,
-            "catch_rate": round(caught / len(scams), 4) if scams else None,
-            "catch_rate_changed_only": round(caught_changed / len(changed), 4) if changed else None,
+            "catch_rate": round(caught / len(scams), 6) if scams else None,
+            "catch_rate_changed_only": round(caught_changed / len(changed), 6) if changed else None,
             "missed_ids": [x["id"] for x, d in zip(scams, ds, strict=True) if d.decision not in ("hold", "block")][:15],
         }
     rng = random.Random(0)
     lz = [engine.check(_mutate(x["text"], "zero_width", rng), ctx_for(x), record=False) for x in legit]
     out["legit_with_zero_width"] = {
         "n": len(legit),
-        "held_rate": round(sum(d.decision in ("hold", "block") for d in lz) / len(legit), 4),
-        "warned_rate": round(sum(d.decision == "warn" for d in lz) / len(legit), 4),
+        "fail_closed": sum(d.path == "fail_closed" for d in lz),
+        "held_rate": round(sum(d.decision in ("hold", "block") for d in lz) / len(legit), 6),
+        "warned_rate": round(sum(d.decision == "warn" for d in lz) / len(legit), 6),
     }
     # Review round 3 (C1): no evaluation set contained a single emoji, and the variation selector in ❤️ made legitimate
     # messages "obfuscated". Legit messages with common emoji appended (with selectors and joiners) are now measured.
@@ -391,8 +401,9 @@ def section_f(rows: list[dict[str, Any]], engine: Engine) -> dict[str, Any]:
     le = [engine.check(x["text"] + emoji[i % len(emoji)], ctx_for(x), record=False) for i, x in enumerate(legit)]
     out["legit_with_emoji"] = {
         "n": len(legit),
-        "held_rate": round(sum(d.decision in ("hold", "block") for d in le) / len(legit), 4) if legit else None,
-        "warned_rate": round(sum(d.decision == "warn" for d in le) / len(legit), 4) if legit else None,
+        "fail_closed": sum(d.path == "fail_closed" for d in le),
+        "held_rate": round(sum(d.decision in ("hold", "block") for d in le) / len(legit), 6) if legit else None,
+        "warned_rate": round(sum(d.decision == "warn" for d in le) / len(legit), 6) if legit else None,
     }
     return out
 
@@ -424,20 +435,74 @@ def section_e(engine: Engine, scams: list[dict[str, Any]], fast: bool) -> dict[s
         "n": len(mix),
         "mix": f"{n_ham} SMS test-split messages + {n_scam} held-out scams",
         "paths": dict(paths),
-        "judge_share": round(share, 4),
+        "judge_share": round(share, 6),
         "p50_ms": round(statistics.median(lat), 2),
         "p95_ms": round(lat[int(0.95 * len(lat))], 2),
         "p99_ms": round(lat[int(0.99 * len(lat))], 2),
         "est_cost_per_judged_message_usd": round(per_judged, 6),
-        "est_cost_per_1000_messages_usd": round(share * per_judged * 1000, 4),
-        "est_cost_per_1000_if_every_message_went_to_llm_usd": round(per_any * 1000, 4),
+        "est_cost_per_1000_messages_usd": round(share * per_judged * 1000, 6),
+        "est_cost_per_1000_if_every_message_went_to_llm_usd": round(per_any * 1000, 6),
         "price_source": f"Claude Haiku 5.5 ${config.LLM_PRICE_IN_PER_MTOK}/MTok in, ${config.LLM_PRICE_OUT_PER_MTOK}/MTok out "
         "(platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-27)",
         "note": (
             "ESTIMATE, not a bill: input tokens = prompt characters / 4, output = 150 tokens per judge, 2 judges. "
-            "Latency is in-process, excludes network and DB, and the judge path ran the offline judge; a hosted "
-            "LLM adds roughly 1-3 s to judged messages only."
+            f"Latency is in-process, excludes network and DB, and the judge path ran {engine.judge_provider}; a hosted "
+            "LLM adds an estimated 1-3 s to judged messages only."
         ),
+    }
+
+
+def _git_rc(*args: str) -> tuple[int, str]:
+    try:
+        p = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, timeout=10)  # noqa: S603, S607
+        return p.returncode, p.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return 1, ""
+
+
+OVERRIDES = (
+    "STAYGUARD_ANTHROPIC_API_KEY",
+    "STAYGUARD_MODEL_LOW",
+    "STAYGUARD_MODEL_HIGH",
+    "STAYGUARD_DATA_RAW",
+    "STAYGUARD_MODELS",
+    "STAYGUARD_LLM_MODEL",
+)
+
+
+def blind_run_gate() -> None:
+    """Refuse the one blind held-out v2 run unless it is attributable and reproducible (review rounds 3-4, C3/C4):
+    this file's own repository (not an outer one), a clean tree including untracked files, the committed v2 file, no
+    environment overrides (a set API key switches to the LLM judge; threshold or data overrides change the system), the
+    committed thresholds, and the committed data manifest."""
+    rc, top = _git_rc("rev-parse", "--show-toplevel")
+    if rc or Path(top).resolve() != ROOT:
+        raise SystemExit(f"refusing the blind v2 run: {ROOT} is not the top of its own git repository")
+    rc, status = _git_rc("status", "--porcelain")
+    if rc or status:
+        raise SystemExit("refusing the blind v2 run: the working tree is not clean (untracked files included)")
+    if _sha256(config.DATA_CURATED / "heldout_v2.jsonl") != V2_SHA256:
+        raise SystemExit("refusing: heldout_v2.jsonl differs from the file committed in a0ef0f5")
+    set_overrides = [k for k in OVERRIDES if os.environ.get(k)]
+    if set_overrides:
+        raise SystemExit(f"refusing the blind v2 run: environment overrides set: {set_overrides}")
+    cal = json.loads((config.EVAL_DIR / "calibration.json").read_text())
+    if (cal["model_low"], cal["model_high"]) != (config.MODEL_LOW, config.MODEL_HIGH):
+        raise SystemExit("refusing the blind v2 run: thresholds differ from eval/calibration.json")
+    from make_manifest import build, manifest_hash
+
+    committed = json.loads((ROOT / "data" / "MANIFEST.json").read_text())
+    if manifest_hash(build(config.DATA_RAW)) != manifest_hash(committed):
+        raise SystemExit("refusing the blind v2 run: data/raw differs from data/MANIFEST.json")
+
+
+def run_conditions(engine: Engine) -> dict[str, Any]:
+    return {
+        "judge_provider": engine.judge_provider,
+        "thresholds": {"model_low": config.MODEL_LOW, "model_high": config.MODEL_HIGH},
+        "data_manifest_hash": manifest_info()["data_manifest_hash"],
+        "versions": VERSIONS,
+        "environment_overrides": [k for k in OVERRIDES if os.environ.get(k)],
     }
 
 
@@ -484,8 +549,13 @@ def to_md(r: dict[str, Any]) -> str:
         "**Dev** data was looked at while the rules were built, so dev numbers are optimistic. **Held-out v1** was blind "
         "only for its first run: later fixes were made after its misses were read (review round 1, finding C1), so only "
         "its frozen first look is a blind number. **Held-out v2** was written afterwards by an agent instructed not to "
-        "read the code (self-reported; same model family), committed before its first run, and run once; its first run "
-        "is frozen. Its text was never seen, but its language mix and brief were known while later rules were written "
+        "read the code (self-reported; same model family) and committed before any run. "
+        + (
+            "Its one blind run is frozen in `eval/heldout_v2_first_look.json` (section A2). "
+            if r.get("heldout_v2_first_look")
+            else "It has NOT been run yet; no v2 number exists in this report. "
+        )
+        + "Its text was never seen, but its language mix and brief were known while later rules were written "
         "(DECISIONS #35).",
         "",
     ]
@@ -641,7 +711,8 @@ def to_md(r: dict[str, Any]) -> str:
         "## F. Robustness: scams rewritten to dodge filters",
         "",
         "Held-out v1 (not blind). The changed-only rate excludes scams the rewrite left unchanged; zero-width characters "
-        "are stripped before any rule, so that row checks the stripping, not a new attack.",
+        "are stripped before any rule and flag the message as obfuscated, so that row measures the obfuscation flag (it catches "
+        "more than the unmutated set), not robustness to a new attack.",
         "",
         "| Rewrite | Held-out v1 caught | Dev caught |",
         "|---|---|---|",
@@ -779,6 +850,9 @@ def headline_v2(fl: dict[str, Any]) -> dict[str, Any]:
     cat = A["per_category"]
     return {
         "v2_fail_closed_crashes": A["paths"].get("fail_closed", 0),
+        "v2_spam_filter_false_holds": A["systems"]["baseline_generic_spam_filter"]["false_alarm_rate"],
+        "v2_legit_payment_pap_held": A.get("per_category_terms", {}).get("legit_payment|pay_at_property", {}).get("held", 0),
+        "v2_legit_payment_pap_n": sum(A.get("per_category_terms", {}).get("legit_payment|pay_at_property", {}).values()),
         "v2_legit_payment_held": cat.get("legit_payment", {}).get("held"),
         "v2_legit_payment_warned": cat.get("legit_payment", {}).get("warned"),
         "v2_legit_payment_clean": cat.get("legit_payment", {}).get("clean"),
@@ -828,6 +902,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     if args.heldout_v2 and args.fast:
         # a fast run would show v2 results without freezing them (review round 2, C5)
         raise SystemExit("--heldout-v2 cannot be combined with --fast: its one blind run must be frozen")
+    if args.heldout_v2 and not FIRST_LOOK_V2.exists():
+        blind_run_gate()
     t0 = time.time()
     print("training classifier ...")
     _, crep, _ = train(save=True)
@@ -858,16 +934,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     )
     v2 = None
     if args.heldout_v2:
-        if not FIRST_LOOK_V2.exists():
-            # The one blind run must be attributable to committed code and the committed set (review round 3, C3).
-            if (
-                _git("status", "--porcelain", "--untracked-files=no") not in ("", "unknown")
-                or _git("rev-parse", "HEAD") == "unknown"
-            ):
-                raise SystemExit("refusing the blind held-out v2 run: run it from a clean git checkout of the repository")
-            if _sha256(config.DATA_CURATED / "heldout_v2.jsonl") != V2_SHA256:
-                raise SystemExit("refusing: heldout_v2.jsonl differs from the file committed in a0ef0f5")
-        else:
+        if FIRST_LOOK_V2.exists():
             print("NOTE: held-out v2 already had its blind run; this run is NOT blind and is not quoted")
         v2rows = [x for x in load_rows("heldout_v2.jsonl") if x.get("split") == "heldout_v2"]
         validate_rows(v2rows)
@@ -926,6 +993,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     "generated": report["generated"],
                     "git_commit": report["git_commit"],
                     "heldout_v2_sha256": report["heldout_v2_sha256"],
+                    # the conditions of the one blind run, so they can be checked afterwards (round 4, C3)
+                    "conditions": run_conditions(engine),
                     "A_messages_heldout_v2": v2,
                     "note": "First evaluation ever run on held-out v2. Never overwritten.",
                 },

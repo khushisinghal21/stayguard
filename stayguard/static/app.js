@@ -279,50 +279,61 @@ loaders.results = async () => {
   // Every field read below is listed in tests/test_eval_harness.py, which checks it exists in a real report.
   const A = ev.A_messages, B = ev.B_real_sms, C = ev.C_links, D = ev.D_sessions, E = ev.E_cost_latency, F = ev.F_robustness;
   const FL = ev.heldout_first_look;
+  // Review round 4 (C2): this tab used to repeat claims the reviews had retracted (v1 "never tuned on", the tuned v1
+  // number as the lead, "87.6% paid at the hotel", no classifier-only baseline). It now leads with the blind numbers.
+  const V2 = ev.heldout_v2_first_look ? ev.heldout_v2_first_look.A_messages_heldout_v2 : null;
   const SYS = {
     baseline_blocklist_only: "Phishing blocklist only", baseline_generic_spam_filter: "Generic spam filter",
+    baseline_stayguard_classifier_only: "StayGuard's classifier alone",
     stayguard_rules_only: "StayGuard, rules only", stayguard_full: "StayGuard",
     stayguard_zero_day_links_blocklist_off: "StayGuard, blocklist switched off", stayguard_degraded_llm_down: "StayGuard, AI judges down",
   };
-  const bar = (v, bad) => h("div", { class: "bar2" }, h("i", { class: bad ? "bad" : "", style: `width:${Math.max(2, (v || 0) * 160)}px` }), pct(v));
+  const bar = (v, bad) => h("div", { class: "bar2" }, h("i", { class: bad ? "bad" : "", style: `width:${Math.max(2, (v || 0) * 160)}px` }), pct(v, 1));
   const MUT = { no_urgency: "Deadline removed", neutral_new_domain: "Fresh brand-free domain", leetspeak: "Leetspeak (c@rd)",
-                zero_width: "Hidden characters", spaced_letters: "Spaced letters (p a y)", combined: "All of the above" };
-  const H = A.heldout.systems.stayguard_full;
+                zero_width: "Hidden characters (flagged as obfuscation)", spaced_letters: "Spaced letters (p a y)", combined: "All of the above" };
+  const FLF = FL ? FL.A_messages_heldout.systems.stayguard_full : null;
+  const lead = V2
+    ? h("div", { class: "lead" },
+        h("div", {}, h("b", {}, pct(V2.systems.stayguard_full.catch_rate, 1)), h("span", {}, `of ${V2.n_scam} held-out v2 scams stopped (blind, run once)`)),
+        h("div", {}, h("b", {}, pct(V2.systems.stayguard_full.false_alarm_rate, 1)), h("span", {}, `of ${V2.n_legit} held-out v2 normal messages wrongly held`)),
+        h("div", {}, h("b", {}, pct(V2.systems.baseline_stayguard_classifier_only.catch_rate, 1)), h("span", {}, "caught by StayGuard's classifier alone, same messages")),
+        h("div", {}, h("b", {}, `$${E.hotel_heldout_est_cost_per_1000_usd}`), h("span", {}, "estimated AI cost per 1,000 hotel messages")))
+    : h("p", { class: "muted" }, "Held-out v2 (the blind set) has not had its one run yet, so there is no blind headline number.");
   root.replaceChildren(
-    h("h1", {}, "How well it works, on messages it was never tuned on"),
-    h("p", { class: "muted" }, `Held-out: ${A.heldout.n} messages built from cited public scam reports, written after the rules and never used to tune them. ` +
-      `Dev: ${A.dev.n} messages written alongside the rules, so dev numbers are optimistic.`),
-    h("div", { class: "lead" },
-      h("div", {}, h("b", {}, pct(H.catch_rate)), h("span", {}, `of ${A.heldout.n_scam} held-out scams stopped`)),
-      h("div", {}, h("b", {}, pct(H.false_alarm_rate, 1)), h("span", {}, `of ${A.heldout.n_legit} held-out normal messages wrongly held`)),
-      h("div", {}, h("b", {}, pct(C.heldout.c3_false_positive_rate, 3)), h("span", {}, `of ${C.heldout.c3_n.toLocaleString()} unseen legit domains flagged`)),
-      h("div", {}, h("b", {}, `$${E.est_cost_per_1000_messages_usd}`), h("span", {}, `estimated AI cost per 1,000 messages ($${E.est_cost_per_1000_if_every_message_went_to_llm_usd} if all went to the judges)`))),
-    FL ? h("p", { class: "muted" }, `First blind run on the held-out set (${FL.generated}): ${pct(FL.A_messages_heldout.systems.stayguard_full.catch_rate)} stopped, ` +
-      `${pct(FL.A_messages_heldout.systems.stayguard_full.false_alarm_rate, 1)} wrongly held. Later changes were driven by a separate red-team suite, but the held-out misses had been seen, so current numbers are less blind than that first run.`) : null,
-    h("div", { class: "rsec" }, h("h2", {}, "Against the alternatives"),
-      h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "System"), h("th", {}, "Held-out stopped"),
-        h("th", {}, "Held-out wrongly held"), h("th", {}, "Dev stopped"), h("th", {}, "Dev wrongly held"))),
+    h("h1", {}, "How well it works: read the blind numbers first"),
+    h("p", { class: "muted" }, `Held-out v2: ${V2 ? V2.n : 148} messages written by a separate agent instructed not to read the code, run once and frozen. ` +
+      `Held-out v1: ${A.heldout.n} messages, blind only for its first run; later fixes targeted its misses, so its current numbers are tuned. ` +
+      `Dev: ${A.dev.n} messages written alongside the rules.`),
+    lead,
+    FLF ? h("p", { class: "muted" }, `Held-out v1 first blind run (${FL.generated}): ${pct(FLF.catch_rate, 1)} stopped, ${pct(FLF.false_alarm_rate, 1)} wrongly held. ` +
+      `Now ${pct(A.heldout.systems.stayguard_full.catch_rate, 1)}, but that is after fixes made from its misses (DECISIONS #28).`) : null,
+    h("div", { class: "rsec" }, h("h2", {}, "Against the alternatives (held-out v1, not blind, and dev)"),
+      h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "System"), h("th", {}, "v1 stopped"),
+        h("th", {}, "v1 wrongly held"), h("th", {}, "Dev stopped"), h("th", {}, "Dev wrongly held"))),
         h("tbody", {}, Object.keys(SYS).map((k) => h("tr", { class: k === "stayguard_full" ? "ours" : "" },
           h("td", {}, SYS[k]), h("td", {}, bar(A.heldout.systems[k].catch_rate)), h("td", {}, bar(A.heldout.systems[k].false_alarm_rate, true)),
           h("td", {}, pct(A.dev.systems[k].catch_rate)), h("td", {}, pct(A.dev.systems[k].false_alarm_rate)))))))),
-    h("div", { class: "rsec" }, h("h2", {}, "When attackers rewrite the scam"),
-      h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Rewrite"), h("th", {}, "Held-out still stopped"), h("th", {}, "Dev"))),
+    h("div", { class: "rsec" }, h("h2", {}, "When attackers rewrite the scam (held-out v1, not blind)"),
+      h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Rewrite"), h("th", {}, "v1 still stopped"), h("th", {}, "Dev"))),
         h("tbody", {}, Object.keys(MUT).map((k) =>
           h("tr", {}, h("td", {}, MUT[k]), h("td", {}, bar(F.heldout[k].catch_rate)), h("td", {}, pct(F.dev[k].catch_rate)))))))),
     h("div", { class: "rsec" }, h("h2", {}, "Links nobody has reported yet (blocklist off)"),
-      h("p", {}, `Held-out: ${pct(C.heldout.c1_detection_rate)} of ${C.heldout.c1_n} real Booking look-alike phishing hosts flagged; ` +
-        `${pct(C.heldout.c2_detection_rate)} of ${C.heldout.c2_n.toLocaleString()} random hosts from the whole feed (any brand, so the blocklist does that job); ` +
-        `${pct(C.heldout.c3_false_positive_rate, 3)} of ${C.heldout.c3_n.toLocaleString()} legit domains never looked at during tuning.`)),
+      h("p", {}, `${pct(C.heldout.c1_detection_rate, 1)} of ${C.heldout.c1_n} Booking look-alike phishing hosts flagged (selected for containing "booking", so this is look-alike coverage); ` +
+        `${pct(C.heldout.c2_detection_rate, 1)} of ${C.heldout.c2_n.toLocaleString()} random hosts from the whole feed; ` +
+        `${pct(C.heldout.c3_false_positive_rate, 3)} of ${C.heldout.c3_n.toLocaleString()} legit domains not examined while tuning, but ` +
+        `${pct(C.heldout.c3_brand_token_false_positive_rate, 1)} of the ${C.heldout.c3_brand_token_n} that contain a travel-brand word.`)),
     h("div", { class: "rsec" }, h("h2", {}, "Ordinary chat"),
       h("p", {}, `${B.real_ham.n.toLocaleString()} real personal SMS sent through as if a hotel wrote them: ${pct(B.real_ham.held_or_blocked_rate, 2)} held, ` +
-        `${pct(B.real_ham.warned_rate, 2)} warned. These are not hotel messages, so this shows StayGuard rarely gets in the way of normal chat; it doesn't measure false holds on real hotel traffic.`)),
+        `${pct(B.real_ham.warned_rate, 2)} warned. These are not hotel messages, and this split was used as a check while writing rules (two rules were narrowed because of it).`)),
     h("div", { class: "rsec" }, h("h2", {}, "Hijacked logins (synthetic)"),
       h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Attack"), h("th", {}, "Flagged risky"), h("th", {}, "Flagged critical"))),
         h("tbody", {}, Object.keys(D.recall_at_risky).map((k) => h("tr", {}, h("td", {}, k.replaceAll("_", " ")),
           h("td", {}, bar(D.recall_at_risky[k])), h("td", {}, bar(D.recall_at_critical[k]))))))),
-      h("p", {}, `False alarms on normal logins: ${pct(D.fpr_at_risky, 2)}. Synthetic data is separable by construction. Malware on the hotel's own PC looks like a normal login, which is why every message is checked on its own.`)),
+      h("p", {}, `False alarms on normal logins: ${pct(D.fpr_at_risky, 2)}. The synthetic attacks are generated from the features the rules use, so detection is true by construction. Malware on the hotel's own PC looks like a normal login, which is why every message is checked on its own.`)),
     h("div", { class: "rsec" }, h("h2", {}, "Speed and cost"),
-      h("p", {}, `${E.mix}: ${pct(E.judge_share, 1)} reached the AI judges; p50 ${E.p50_ms} ms, p95 ${E.p95_ms} ms. ${E.note} Real bookings in the dataset: ${m.dataset.reservations.toLocaleString()}, of which ${pct(m.dataset.share_pay_at_property, 1)} are paid at the hotel.`)));
+      h("p", {}, `Hotel messages reaching the AI judges: ${pct(E.hotel_heldout_judge_share, 1)} (held-out v1); on an SMS-heavy mix ${pct(E.judge_share, 1)}. ` +
+        `In-process p50 ${E.p50_ms} ms, p95 ${E.p95_ms} ms with the offline judge. ${E.note} Bookings in the public dataset: ${m.dataset.reservations.toLocaleString()}, ` +
+        `of which ${pct(m.dataset.share_pay_at_property, 1)} had "No Deposit" (two Portuguese hotels, 2015-17; not the same as "pay at the hotel").`)));
 };
 
 // ------------------------------------------------------------------ audit

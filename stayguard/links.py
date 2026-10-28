@@ -232,7 +232,7 @@ REDIRECTORS = (
 SERVICE_SUBDOMAINS = {"www", "m", "mobile", "maps", "translate", "support", "help", "en", "accounts", "play", "apps"}
 # Country TLDs that are free or heavily abused; a brand name on them is never assumed to be the brand's own site.
 ABUSED_CCTLDS = {"tk", "ml", "ga", "cf", "gq", "cm", "ws", "cc", "to", "nu", "la", "pw", "su"}
-KNOWN_SAFE_HOSTS = {"maps.app.goo.gl", "goo.gl"}  # google maps share links (path-checked below)
+KNOWN_SAFE_HOSTS = {"maps.app.goo.gl", "goo.gl", "maps.google.com"}  # google maps share links (path-checked below)
 LURE_WORDS = re.compile(
     r"verif|confirm|secure|check-?in|checkin|extranet|admin|guest|payment|pay|login|signin|"
     r"account|update|refund|support|help|invoice|id\d{3,}|reserv|arrival|card|wallet|unlock",
@@ -311,12 +311,26 @@ def embedded_targets(url: str) -> list[str]:
     # drop a port, then keep everything after the host: a query or fragment straight after the host ("booking.com?u=
     # https://evil") used to be cut at the "/" inside the embedded scheme, losing the target (review round 3, A7)
     rest = re.sub(r"^:\d+", "", rest)
+    # Browsers read "\\" as "/", "https:/host" and "https:///host" as "https://host", and "//host" as the current scheme
+    # (round 4, A8: these forms, and a scheme-less host as a path segment, were never extracted).
+    rest = rest.replace("\\", "/")
+    rest = re.sub(r"(?i)\b(https?|hxxps?):/+", r"\1://", rest)
     out = EMBEDDED_URL.findall(rest)
+    out += ["https:" + m for m in re.findall(r"(?<=[=/#])//[^\s/&#?]+\.[^\s/&#?]+[^\s&#]*", rest) if "://" not in m]
     for m in PARAM_VALUE.finditer(rest):
-        v = m.group(1)
+        v = m.group(1).lstrip("/")
         if "://" not in v and "." in v and is_public_host(host_of(v)):
             out.append(v)
-    return out
+    path = rest.split("?", 1)[0].split("#", 1)[0]
+    for seg in path.split("/")[1:-1]:  # a host-looking segment followed by more path: "/r/evil-pay.xyz/c"
+        if (
+            "." in seg
+            and host_of(seg) not in {host_of(o) for o in out}
+            and is_public_host(host_of(seg))
+            and not re.fullmatch(r"[\w-]+\.(?:html?|php|aspx?|jsp|pdf|png|jpe?g)", seg)
+        ):
+            out.append(seg + "/")
+    return list(dict.fromkeys(out))
 
 
 def urlsplit_path(url: str) -> str:
@@ -499,8 +513,11 @@ class LinkChecker:
             # popularity discount, and it counts as unvouched. Any list of user-content hosts is incomplete (round 2).
             # Every label is checked, not just the leftmost ("www.tenant.platform.com" kept the discount, round 3 A4), and
             # two-letter labels are language/country service hosts (pt.tripadvisor.com). A tenant page is never "safe".
+            # Round 4 (A7): exempting two-letter and service-named labels let "lh.webnode.com" or "apps.<platform>"
+            # keep the discount. Only "www" and "m" are exempt now; any other subdomain of a popular site is unvouched
+            # unless that exact host is itself in the popularity list (a known-safe host is handled earlier).
             labels = [x for x in (ext.subdomain or "").lower().split(".") if x]
-            tenant = [x for x in labels if x not in SERVICE_SUBDOMAINS and len(x) != 2]
+            tenant = [x for x in labels if x not in ("www", "m")]
             if popular and not hosted and tenant and host not in _top_domains():
                 score = max(score + 0.1, 0.3)
                 reasons.append("POPULAR_PLATFORM_SUBDOMAIN")

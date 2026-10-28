@@ -12,7 +12,7 @@
         "p_value": 0.00024
       }
     },
-    "current_model_high": {
+    "first_look_classifier_at_current_threshold": {
       "model_high": 0.52,
       "full_system_caught": 44,
       "classifier_alone_caught": 57,

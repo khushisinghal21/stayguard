@@ -20,10 +20,15 @@ from .domains import EXTRACT, is_public_host
 # Every invisible "default ignorable" character, not only the zero-width ones: invisible operators (U+2061-2064),
 # the combining grapheme joiner (U+034F), the Mongolian vowel separator, bidi controls, variation selectors and the
 # tag block. Review round 1 got a card-details scam delivered by sprinkling U+2063 inside words.
-ZERO_WIDTH = re.compile(
-    "[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f"
-    "\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb\U0001d173-\U0001d17a\U000e0000-\U000e0fff]"
+_ZW_LISTED = (
+    "\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f"
+    "\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff"
 )
+# Round 4 (A2): U+1BCA0-1BCA3 were missing, so the list is now completed from the Unicode database: every format
+# character (category Cf) except the visible "prepended concatenation marks" used in Arabic, Syriac and Kaithi numbers.
+_VISIBLE_CF = set("\u0600\u0601\u0602\u0603\u0604\u0605\u06dd\u070f\u0890\u0891\u08e2\U000110bd\U000110cd")
+_CF = "".join(re.escape(chr(c)) for c in range(0x110000) if unicodedata.category(chr(c)) == "Cf" and chr(c) not in _VISIBLE_CF)
+ZERO_WIDTH = re.compile(f"[{_ZW_LISTED}{_CF}]")
 _FLAG_TAGS = re.compile("\U0001f3f4[\U000e0020-\U000e007e]+\U000e007f")  # subdivision flags (England, Scotland)
 
 
@@ -456,19 +461,55 @@ PHONE_HANDOFF = _rx(
 # arrival") is still a demand when it names where the money goes or says it is due before arrival. Review round 3:
 # passive phrasing has no verb from ACTION, so it was only a "mention" and was delivered clean.
 PAY_DESTINATION = _rx(
-    r"\b(?:payable|settled?|transferred|credited|deposited|remitted|wired)\s+(?:to|into|by|via|through)\b",
+    # "to/into" only: "payable by card at check-in" / "payable via the front desk" are on-site payments, which round 4
+    # (A3) showed this pattern hard-held
+    r"\b(?:payable|settled?|transferred|credited|deposited|remitted|wired)\s+(?:to|into)\b(?!\s+(?:the\s+)?(?:hotel|property|"
+    r"reception|front desk|driver)\b)",
     # generic verbs only with an explicit destination ("go to the cinema" held a personal SMS in the SMS test split;
     # recorded in DECISIONS #34)
     r"\b(?:paid|sent|due|goes|go)\s+(?:to|into|by|via)\s+(?:our|my|this|the hotel'?s?)\b",
     r"\b(?:to|into)\s+(?:our|the hotel'?s?|my|this)\s+(?:account|wallet|number|e-?mail)\b",
 )
-PRE_ARRIVAL = _rx(
-    r"\b(?:before|ahead of|prior to|in advance of)\s+(?:your\s+|the\s+)?(?:arrival|check-?in|you arrive|your stay|travel)",
-    r"\bin advance\b",
-    r"\bantes de (?:su |la |a )?(?:llegada|chegada|check-?in)",
-    r"\bavant (?:votre |l'|l’)?(?:arrivée|check-?in)",
-    r"\bvor (?:ihrer |der )?(?:anreise|ankunft)",
+_PRE = (
+    r"(?:\b(?:before|ahead of|prior to|in advance of)\s+(?:your\s+|the\s+)?(?:arrival|check-?in|you arrive|your stay|travel)"
+    r"|\bin advance\b|\bantes de (?:su |la |a )?(?:llegada|chegada|check-?in)|\bavant (?:votre |l'|l’)?(?:arrivée|check-?in)"
+    r"|\bvor (?:ihrer |der )?(?:anreise|ankunft))"
 )
+_PAY_VERB = r"\b(?:pay|paid|payable|settle[ds]?|transfer(?:red)?|send|sent|due|remit(?:ted)?|charged?|deposit(?:ed)?)\b"
+# "Due before arrival" only when a payment verb sits next to the timing: "let us know before arrival" about a 12 EUR
+# breakfast was hard-held in round 4 (A3).
+PRE_ARRIVAL = re.compile(rf"{_PAY_VERB}[^.!?;\n]{{0,40}}{_PRE}|{_PRE}[^.!?;\n]{{0,25}}{_PAY_VERB}", re.IGNORECASE)
+# An e-mail address right after a payment verb is a destination ("send the deposit to x@y"); an e-mail elsewhere in a
+# sentence that mentions a price is not.
+PAY_TO_EMAIL = re.compile(rf"{_PAY_VERB}[^.!?\n]{{0,60}}[\w.+-]+@[\w-]+\.[\w.-]+", re.IGNORECASE)
+
+
+def _is_money_ask_sentence(sent: str) -> bool:
+    if not PAY_TERMS.search(sent):
+        return False
+    return bool(
+        PAY_DESTINATION.search(sent)
+        or PRE_ARRIVAL.search(sent)
+        or PAY_TO_EMAIL.search(sent)
+        or _links(sent)
+        or (ACTION.search(sent) and (URGENCY.search(sent) or GOAL.search(sent)))
+    )
+
+
+_OBJECT_BREAK = re.compile(r"\b(?:until|unless|once|after|before|so|then|but|however|first|only if|instead)\b", re.IGNORECASE)
+
+
+def _unanchored_sensitive(clause: str) -> list[str]:
+    """Card / rail mentions in a reassuring clause that are NOT the object of the reassurance: further than 60
+    characters from it, or separated from it by "until / unless / once / so / then ..."."""
+    ms = list(REASSURE.finditer(clause))
+    out = []
+    for rx in (CARD_DATA, OFF_PLATFORM_PAYMENT):
+        for m in rx.finditer(clause):
+            near = [r for r in ms if r.end() <= m.start() and m.start() - r.end() <= 60]
+            if not near or any(_OBJECT_BREAK.search(clause[r.end() : m.start()]) for r in near):
+                out.append(m.group())
+    return out
 
 
 # Sentences that reassure ("you pay at the hotel", "nothing to pay now") are not asks.
@@ -569,7 +610,10 @@ def _pii_view(text: str) -> str:
     """What the PII regexes run on: NFKC (fullwidth digits -> ASCII), invisible characters removed, and every Unicode
     dash or space turned into its ASCII form. Review round 1 got 4111\u20111111\u20111111\u20111111 (non-breaking
     hyphens) past masking and into storage."""
-    t = unicodedata.normalize("NFKC", text)
+    # NFKC one character at a time, keeping only one-to-one folds (fullwidth digits -> ASCII). Whole-text NFKC let one
+    # character become up to 18 (U+FDFA), so a 384-character message became 5,144 and pushed its link past what the
+    # judges are shown (round 4, A4).
+    t = "".join(f if len(f := unicodedata.normalize("NFKC", ch)) == 1 else ch for ch in text)
     t = ZERO_WIDTH.sub("", t)
     t = _DASHES.sub("-", t)
     return _SPACES.sub(" ", t)
@@ -809,7 +853,8 @@ def extract(text: str) -> TextSignals:
     # turn several of these back into a working link, so they are links, and writing them that way is evidence.
     r = refang(t)
     if r != t:
-        hidden = [u for u in _links(r) if u not in s.urls and u not in _links(t)]
+        known = set(_links(t)) | set(s.urls)  # computed once: per-link recomputation was quadratic (round 4, A6)
+        hidden = [u for u in _links(r) if u not in known]
         if hidden:
             s.urls += hidden
             s.obfuscated = True
@@ -861,6 +906,7 @@ def _extract(t: str) -> TextSignals:
     # and a reassuring sentence ("you pay at the property", "we never ask for card details") is not an ask.
     card_spans, rail_spans, unreassured_pay = [], [], []
     shadow_ask = False
+    sensitive_in_calm: list[str] = []
     for full in SENTENCE_SPLIT.split(t):
         # Reassurance only covers the clause it is in. Review round 1: "Payment is collected on arrival and we don't
         # need to share any details, but please transfer 50 via UPI ..." was delivered because one reassuring phrase
@@ -871,30 +917,43 @@ def _extract(t: str) -> TextSignals:
             s.add("reassurance", _spans(REASSURE, c))
         sent = " ".join(c for c in clauses if not REASSURE.search(c))
         for c in calm:
+            # Every stretch of the clause outside the reassurances is read: before the first, between them, after the
+            # last. Round 3 read only the head and tail, and only for imperative verbs; round 4 (A1) hid "send the 80
+            # EUR deposit to x@y" between two reassurances and a passive "is payable to x@y" before one.
             ms = list(REASSURE.finditer(c))
-            head, tail = c[: ms[0].start()], c[ms[-1].end() :]
-            # An instruction BEFORE the reassurance ("Pay the 80 EUR tax today as you won't be charged anything else")
-            # is read too (review round 3, A1).
-            if IMPERATIVE.search(head):
-                sent += " " + head
-            # A tail whose instruction is the reassurance's own object ("never ask you to send ... or share ...") is
-            # skipped; "... paid at the hotel to keep it pay the 80 EUR tax" is not (round 3: any tail starting with
-            # "to" used to be skipped).
-            obj = re.match(rf"\s*(?:you\s+)?(?:to|for)\s+(?:\w+\s+){{0,2}}?(?:{IMPERATIVE_WORDS})\b", tail, re.IGNORECASE)
-            if IMPERATIVE.search(tail) and not obj:
-                sent += " " + tail
+            bounds = [0] + [x for m in ms for x in (m.start(), m.end())] + [len(c)]
+            for i in range(0, len(bounds), 2):
+                seg = c[bounds[i] : bounds[i + 1]]
+                # A stretch whose instruction is the reassurance's own object ("never ask you to send ... or share ...")
+                # is skipped: it follows a reassurance and starts "to/for <verb>".
+                obj = i > 0 and re.match(
+                    rf"\s*(?:you\s+)?(?:to|for)\s+(?:\w+\s+){{0,2}}?(?:{IMPERATIVE_WORDS})\b", seg, re.IGNORECASE
+                )
+                demand = PAY_DESTINATION.search(seg) or PAY_TO_EMAIL.search(seg) or PRE_ARRIVAL.search(seg)
+                if (IMPERATIVE.search(seg) and not obj) or demand:
+                    sent += " " + seg
         card_spans += _spans(CARD_DATA, sent)
         rail_spans += _spans(OFF_PLATFORM_PAYMENT, sent)
         # Shadow reading of the whole sentence, reassurance included: if it reads as a payment ask but the filtered
         # sentence doesn't, a reassurance hid it. Round 3 (A1) showed layer 3 only covered card and rail words, so a plain
         # "pay the 80 EUR tax at <link>" next to "fully paid at the property" was delivered clean.
+        # (round 4, A1: the "not PAY_TERMS in sent" condition let any harmless price elsewhere in the sentence switch this
+        # off, so it now asks only whether the whole sentence reads as an ask that the filtered one doesn't)
         if (
             calm
             and PAY_TERMS.search(full)
-            and not PAY_TERMS.search(sent)
-            and (ACTION.search(full) or IMPERATIVE.search(full) or _links(full) or PAY_DESTINATION.search(full))
+            # the reassurance's own words ("you pay the driver") are not the instruction we are looking for
+            and (
+                IMPERATIVE.search(REASSURE.sub(" ", full))
+                or _links(full)
+                or PAY_DESTINATION.search(full)
+                or PAY_TO_EMAIL.search(full)
+            )
+            and not _is_money_ask_sentence(sent)
         ):
             shadow_ask = True
+        for c in calm:
+            sensitive_in_calm += _unanchored_sensitive(c)
         if any(PAY_TERMS.search(c) for c in calm):
             s.money_mention = True
         pay = _spans(PAY_TERMS, sent)
@@ -903,7 +962,7 @@ def _extract(t: str) -> TextSignals:
         s.money_mention = True
         unreassured_pay += pay
         link_here = bool(_links(sent))
-        if PAY_DESTINATION.search(sent) or PRE_ARRIVAL.search(sent) or EMAIL_RX.search(sent):
+        if PAY_DESTINATION.search(sent) or PRE_ARRIVAL.search(sent) or PAY_TO_EMAIL.search(sent):
             s.money_ask = s.soft_money_ask = True
             s.add("money_ask", pay[:2] + _spans(PAY_DESTINATION, sent)[:1] + _spans(PRE_ARRIVAL, sent)[:1])
             continue
@@ -937,9 +996,10 @@ def _extract(t: str) -> TextSignals:
     s.phone_handoff = bool(PHONE_HANDOFF.search(t))
     if s.phone_handoff:
         s.add("phone_handoff", _spans(PHONE_HANDOFF, t)[:1])
-    s.reassured_sensitive = (
-        not (card_spans or rail_spans) and bool(_spans(CARD_DATA, t) or _spans(OFF_PLATFORM_PAYMENT, t))
-    ) or (shadow_ask and not s.money_ask)
+    # A card or rail mention inside a reassuring clause counts only when it is not the reassurance's own object: "we
+    # never ask for your card details" is a reminder, "you won't be charged until we receive your card number" is not.
+    # Round 4 (A11): any card word used to trigger the banner floor, warning genuine security reminders.
+    s.reassured_sensitive = (not (card_spans or rail_spans) and bool(sensitive_in_calm)) or (shadow_ask and not s.money_ask)
     s.evidence.pop("card_data", None)
     s.evidence.pop("off_platform_payment", None)
     s.add("card_data", card_spans)

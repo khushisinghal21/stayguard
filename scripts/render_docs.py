@@ -63,6 +63,10 @@ def results_table(h: dict) -> str:
                 f"{f('v2_legit_payment_held')} / {f('v2_legit_payment_warned')} / {f('v2_legit_payment_clean')}",
             ),
             (
+                "Held-out v2: of those, the ones on pay-at-property bookings (the case the payment rule holds): held / total",
+                f"{f('v2_legit_payment_pap_held')} / {f('v2_legit_payment_pap_n')}",
+            ),
+            (
                 "Held-out v2, same messages, caught: StayGuard's classifier alone / generic spam filter / StayGuard with "
                 "judges down",
                 f"{f('v2_classifier_only_caught')} / {f('v2_spam_filter_caught')} / {f('v2_degraded_caught')}",
@@ -125,7 +129,7 @@ def results_table(h: dict) -> str:
         ),
         (
             f"Real everyday SMS wrongly held ({f('sms_ham_n')} messages, domain-shifted; used as a check during rule work, "
-            "and one rule was narrowed because of it; 95% CI)",
+            "and two rules were narrowed because of it, DECISIONS #34; 95% CI)",
             f"{f('sms_ham_held')} ({f('sms_ham_held_ci')})",
         ),
         (f"Unseen legit domains flagged ({f('c3_heldout_n')} domains, ranks 110k-210k)", f("c3_heldout_fp")),

@@ -10,6 +10,7 @@ data in a temporary directory, and writes eval/first_look_reconstruction.json.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -71,7 +72,14 @@ def main() -> dict:
     rows = [json.loads(x) for x in (ROOT / "data/curated/heldout_eval.jsonl").read_text().splitlines() if x.strip()]
     scams = [r["id"] for r in rows if r.get("split") == "heldout" and r["label"] == 1]
     result: dict = {"first_look_commit": commit, "n_scams": len(scams), "thresholds": {}}
-    for name, high in (("first_look_model_high", cal.get("model_high")), ("current_model_high", None)):
+    # the first look must have been run on exactly this file (round 4, C12)
+    if (
+        fl.get("heldout_sha256")
+        and fl["heldout_sha256"] != hashlib.sha256((ROOT / "data/curated/heldout_eval.jsonl").read_bytes()).hexdigest()
+    ):
+        raise SystemExit("heldout_eval.jsonl differs from the file the first look ran on")
+    # second entry: the FIRST-LOOK classifier's scores at TODAY's threshold (not today's classifier); round 4, C12
+    for name, high in (("first_look_model_high", cal.get("model_high")), ("first_look_classifier_at_current_threshold", None)):
         if high is None:
             from stayguard import config
 

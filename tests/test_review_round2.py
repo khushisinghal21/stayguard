@@ -78,8 +78,10 @@ def test_tenant_link_with_an_instruction_is_never_delivered_clean(engine):
 
 def test_service_subdomains_of_popular_sites_keep_the_discount():
     lc = LinkChecker(use_blocklist=False)
-    assert lc.check("https://en.wikipedia.org/wiki/Lisbon").verdict == "safe"
     assert lc.check("https://www.instagram.com/lisboncityhotel/").verdict == "safe"
+    # Since round 4 (A7) only www/m keep the discount: "en.wikipedia.org" is "unknown" (delivered with a warning),
+    # because the same exemption let tenants named like a language or a service ("lh.", "apps.") through.
+    assert lc.check("https://en.wikipedia.org/wiki/Lisbon").verdict == "unknown"
 
 
 # ---------------------------------------------------------------------------------------------- C1/C5/C6 evaluation

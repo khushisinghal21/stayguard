@@ -381,10 +381,16 @@ def audit_verify() -> dict[str, Any]:
         # rows exist but the anchor file is gone: that is itself tampering (or lost evidence), not "nothing to check"
         return {"ok": False, "broken_at_seq": None, "checked": n, "reason": "anchors_missing"}
     if anchor_lines is not None:
+        # The LAST anchor written for a seq wins: if a transaction anchored and then rolled back, SQLite reuses the seq
+        # and a later anchor records the row that really committed. Comparing every anchor made one failed commit a
+        # permanent false tamper alarm that also stopped all later checks (round 4, A9).
+        latest: dict[int, str] = {}
         for line in anchor_lines:
-            if not line.strip():
-                continue
-            a = json.loads(line)
+            if line.strip():
+                a = json.loads(line)
+                latest[a["seq"]] = a["hash"]
+        for seq, h in sorted(latest.items()):
+            a = {"seq": seq, "hash": h}
             anchors += 1
             got = hashes.get(a["seq"])
             for _ in range(20):  # a writer may have anchored and not yet committed: wait briefly for that row
