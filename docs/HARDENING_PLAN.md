@@ -27,16 +27,18 @@ Format: **defect → fix → verification**. Status is updated as work lands.
 4. **Evaluation tuned on its test sets (1.4).** Confirmed from the session history: rules were changed after reading
    golden-set misses and mutation misses; link rules were changed after reading C3 false-positive examples;
    `MODEL_LOW/HIGH` were hand-set.
-   → (a) Golden set frozen as `split: dev`. (b) New `data/curated/heldout_eval.jsonl`, ≥120 messages built from cited,
-   publicly reported scam wordings and real hotel-message templates, committed **before** its first evaluation (commit
+   → (a) Golden set frozen as `split: dev`. (b) New `data/curated/heldout_eval.jsonl`, ≥120 messages from cited reports and
+   hotel templates (as built: 10 of 66 scams reuse quoted wording, the rest paraphrase or were written by us), committed **before** its first evaluation (commit
    hash recorded in the report). (c) **Deviation from the brief:** C3 cannot be split as 10k–60k / 60k–110k because both
-   halves were read while tuning. Dev = ranks 10,001–110,000 (seen); held-out = 110,001–210,000 (never examined).
+   halves were read while tuning. Dev = ranks 10,001–110,000 (seen); held-out = 110,001–210,000 (not examined while tuning;
+   flagged examples from it have been printed in reports since `53c502e`).
    C1 held-out = the half of the Booking-themed hosts that was never evaluated (the old C1 half becomes dev). C2 gets a
    disjoint second sample. (d) SMS split into train/calibration/test; thresholds chosen on calibration (SMS calibration +
    dev golden set) by a stated rule, saved to `eval/calibration.json` with a reliability diagram; config defaults read
    from it. (e) Report prints dev and held-out side by side; headline = held-out. Disclosure added to README and
    DECISIONS.
-   → Verified by the report structure and a test that the held-out rows are never read by calibration or tuning code.
+   → Verified by the report structure and `tests/test_review_round4.py::test_no_heldout_text_reaches_training_or_calibration`
+   (added in round 4: until then this line claimed a test that did not exist, C9).
 5. **Unreproducible live feeds (1.5).** → `scripts/make_manifest.py` writes `data/MANIFEST.json` (file, URL, fetch
    time, lines, SHA-256); `fetch_data.sh` calls it; the eval stores the manifest hash and `--compare` refuses
    different manifests without `--allow-drift`; `scripts/snapshot_data.sh` packs the frozen snapshot (release asset).

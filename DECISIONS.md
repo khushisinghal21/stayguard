@@ -12,12 +12,12 @@ domains and languages the model has never seen, and it is fully explainable. The
 at the desk" or "you pay the driver directly".
 
 ### 2. Rules first, model second, LLM last
-Rules settle almost all of an SMS-heavy mix in a few milliseconds (p50 <!-- num:p50_ms -->3.4 ms<!-- /num -->, in-process,
+Rules settle almost all of an SMS-heavy mix in a few milliseconds (p50 <!-- num:p50_ms -->2.4 ms<!-- /num -->, in-process,
 offline judge). On hotel messages the rules settle less, and of what they leave the judges, not the model, settle most
-(review round 2, C7: the earlier "the model settles most of the rest" was wrong; path counts are in `eval/report.md`). The judges see only what's left (<!-- num:judge_share -->0.9%<!-- /num --> of the SMS-heavy mix, but
+(review round 2, C7: the earlier "the model settles most of the rest" was wrong; path counts are in `eval/report.md`). The judges see only what's left (<!-- num:judge_share -->1.0%<!-- /num --> of the SMS-heavy mix, but
 <!-- num:hotel_judge_share -->14.5%<!-- /num --> of the hotel messages in held-out v1, about
 <!-- num:hotel_est_cost_per_1000 -->$0.0288<!-- /num --> per 1,000 there), which keeps
-the **estimated** LLM cost at <!-- num:est_cost_per_1000 -->$0.0018<!-- /num --> per 1,000 messages instead of
+the **estimated** LLM cost at <!-- num:est_cost_per_1000 -->$0.0020<!-- /num --> per 1,000 messages instead of
 <!-- num:est_cost_per_1000_all_llm -->$0.1956<!-- /num --> if every message went to the judges (published Claude Haiku 5.5 price,
 estimated token counts — an estimate, not a bill). An LLM-first design would also make an attacker's prompt
 injection part of every decision.
@@ -218,13 +218,13 @@ Chosen over: the raw corpus split. The SMS corpus repeats texts (403 duplicate r
 spam texts were also in the training split, so test metrics were inflated (round 1, C9). Splits are now made after
 dropping exact duplicates. Side effects, kept and recorded rather than tuned away: recalibration widened the model band
 (#14); on held-out v1 the share of legitimate messages delivered with a warning rose from 1.7% (report at `ec2348b`) to
-<!-- num:heldout_legit_warned -->3.5%<!-- /num --> (false holds unchanged); "Photos of the room: `<unknown .xyz link>`" is
+<!-- num:heldout_legit_warned -->3.4%<!-- /num --> (false holds unchanged); "Photos of the room: `<unknown .xyz link>`" is
 now held instead of warned, and "we never ask for card details by chat" is now warned instead of delivered (both
 pinned in `tests/test_engine.py`).
 
 ### 31. A classifier-only baseline in every table
 Chosen over: comparing only against a generic spam filter and a blocklist, which are weak baselines by construction
-(round 1, C2 and C8). On held-out v1 the classifier alone caught <!-- num:heldout_classifier_only_caught -->84.9%<!-- /num -->,
+(round 1, C2 and C8). On held-out v1 the classifier alone caught <!-- num:heldout_classifier_only_caught -->84.8%<!-- /num -->,
 close to the full pipeline. The blocklist row is labelled uninformative because <!-- num:heldout_blocklist_urls_listed -->0<!-- /num -->
 of the set's <!-- num:heldout_blocklist_urls -->35<!-- /num --> URLs are in the feeds.
 
@@ -232,12 +232,16 @@ of the set's <!-- num:heldout_blocklist_urls -->35<!-- /num --> URLs are in the 
 Round 1 (C4) showed the evaluation sets had almost no legitimate payment requests, and a probe of 12 genuine ones (a
 group pro-forma, a damage deposit, city tax in advance) held half of them. Chosen over: loosening the payment-terms rule
 (invariant 2). A hotel that needs money before arrival on a no-deposit booking is asked to use the platform's payment
-flow; StayGuard tells it so. Held-out v2 has 26 legitimate payment messages so the cost of this choice is measured
-blind instead of asserted.
+flow; StayGuard tells it so. Held-out v2 has 26 legitimate payment messages, but its brief asked for them to be
+"mostly on prepaid/deposit bookings or clearly say 'pay at the hotel'" (round 4, C5), so few are the no-deposit case
+this limitation is about. The report therefore breaks legitimate payment results down by payment terms, and the
+README quotes the pay-at-property subset separately; it may be small.
 
 ### 33. Fixes from the adversarial review, and what we declined
 Every confirmed finding from review rounds is fixed with a regression test (`tests/test_review_round*.py`) or declined
-here with a reason; the full record is `docs/ADVERSARIAL_REVIEW.md`. Declined in round 1: a precision-at-prevalence
+here with a reason, or recorded as a residual; the full record is `docs/ADVERSARIAL_REVIEW.md`. (Round 4, C9: this
+line used to claim every finding had a regression test; some fixes are wording or report changes with no test, and
+those are marked as such in the record.) Declined in round 1: a precision-at-prevalence
 figure (C5) — we have no sourced prevalence for hijack scams among hotel messages, and an assumed one would be a
 fabricated metric. Round 1's second decline (no significance test, "the intervals overlap") was wrong: round 2 (C1)
 showed overlapping intervals are not a test for paired outcomes, and an exact McNemar test on the only blind v1 run
@@ -271,7 +275,7 @@ Round 3 (C1): the round-1 invisible-character fix also flagged the variation sel
 and the joiner inside 👨‍👩‍👧, so ordinary emoji made legitimate messages "obfuscated" and warned; no evaluation set
 contained a single emoji. The hidden-character flag now ignores emoji sequences, subdivision flags and the joiners
 Indic and Arabic scripts need (they are still stripped before matching), and the report measures legitimate messages
-with common emoji appended (<!-- num:legit_emoji_warned_heldout -->3.5%<!-- /num --> warned on held-out v1). Inserting
+with common emoji appended (<!-- num:legit_emoji_warned_heldout -->3.4%<!-- /num --> warned on held-out v1). Inserting
 real zero-width characters into a legitimate message still warns it almost always
 (<!-- num:legit_zero_width_warned_heldout -->98.3%<!-- /num -->), which is deliberate: a hotel has no reason to write them.
 
