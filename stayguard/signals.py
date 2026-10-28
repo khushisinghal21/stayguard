@@ -682,7 +682,12 @@ IMPERATIVE_WORDS = (
     r"confirm|share|send|transfer|wire|enter|provide|update|verify|give|deposit|top up|scan|reply|forward|type|write|"
     r"pay|settle|complete|click|tap|open|visit|fill(?: in)?|submit"  # pay/settle/complete/click: review round 3, A1
 )
-IMPERATIVE = re.compile(rf"(?<!\bto )(?<!\bnot )(?<!n't )(?<!\bnever )\b(?:{IMPERATIVE_WORDS})\b", re.IGNORECASE)
+# "Apple Pay" / "Google Pay" are wallet names, not an instruction to pay (found on held-out v1 after round 4; recorded in
+# docs/ADVERSARIAL_REVIEW.md round 4)
+IMPERATIVE = re.compile(
+    rf"(?<!\bto )(?<!\bnot )(?<!n't )(?<!\bnever )(?<!apple )(?<!google )(?<!samsung )\b(?:{IMPERATIVE_WORDS})\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass

@@ -264,3 +264,9 @@ def test_no_heldout_text_reaches_training_or_calibration():
     train = {str(t).strip().lower() for t in sms_splits()[0].text} | {str(t).strip().lower() for t in hotel_training_rows().text}
     cal = {str(t).strip().lower() for t in calibration_rows().text}
     assert not (held & train) and not (held & cal)
+
+
+def test_wallet_names_are_not_an_instruction_to_pay(engine):
+    """Found on held-out v1 after the round-4 fixes (v1 is not blind; recorded in docs/ADVERSARIAL_REVIEW.md)."""
+    d = run(engine, "Please note we are a cash-free hotel; you can pay at check-in by card or Apple Pay.")
+    assert not extract("you can pay at check-in by card or Apple Pay").reassured_sensitive and d.decision != "hold"
