@@ -235,7 +235,7 @@ it checked; and that the held-out link numbers equal the frozen first look.
 
 ---
 
-## Round 4 (reviewed `fef130a`, each reviewer on its own `git archive` export; fixes in `4da85e0`, `ef8b0f2`-series commits through `3756222`)
+## Round 4 (reviewed `fef130a`, each reviewer on its own `git archive` export; fixes in `4da85e0`, `244d99e`, `e6ea112`, `3756222`)
 
 Reported CONFIRMED: A 11, B 2, C 12 (25), plus withdrawn and speculative items below. Every A and B finding has a
 regression test in `tests/test_review_round4.py`; run against `fef130a` (B's against `e6ea112`), they fail there,
