@@ -677,7 +677,8 @@ def to_md(r: dict[str, Any]) -> str:
         f"- {B['real_spam']['n']} real spam SMS: {pct(B['real_spam']['held_or_blocked_rate'], 1)} held "
         "(generic spam, not hotel scams).",
         "- Caveat: these are personal SMS, not hotel conversations. They show the system rarely interferes with ordinary "
-        "chat; they do not measure false holds on real hotel traffic, which needs platform data.",
+        "chat; they do not measure false holds on real hotel traffic, which needs platform data. This split was also used "
+        "as a check while writing rules, and two rules were narrowed after they held texts in it (DECISIONS #34).",
     ]
     if B["real_ham"].get("examples_held"):
         lines += ["", "Held:", ""] + [f"- {t[:120]}" for t in B["real_ham"]["examples_held"]]
