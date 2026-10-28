@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -183,7 +183,12 @@ def gen_attacks(n: int, rng: np.random.Generator) -> pd.DataFrame:
 
 
 def _matrix(df: pd.DataFrame) -> np.ndarray:
-    return np.array([[featurise(r)[f] for f in FEATURES] for r in df.to_dict("records")])
+    return np.array([[featurise(r)[f] for f in FEATURES] for r in _records(df)])
+
+
+def _records(df: pd.DataFrame) -> list[dict[str, Any]]:
+    """DataFrame rows as str-keyed dicts (pandas-stubs types to_dict("records") keys as Hashable)."""
+    return cast(list[dict[str, Any]], df.to_dict("records"))
 
 
 # ----------------------------------------------------------------------------------------------
@@ -224,7 +229,7 @@ def train(seed: int = 11, save: bool = True) -> tuple[dict[str, Any], dict[str, 
     }
     scorer = SessionRiskModel(blob)
     te = pd.concat([te_norm, attacks], ignore_index=True)
-    risks = np.array([r.risk for r in scorer.score_many(te.to_dict("records"))])
+    risks = np.array([r.risk for r in scorer.score_many(_records(te))])
     y = te["label"].to_numpy()
     norm_r = risks[y == 0]
     report = {

@@ -26,7 +26,7 @@ import secrets
 import sqlite3
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -241,7 +241,11 @@ def seed(force: bool = False) -> dict[str, Any]:
     # A fixed +10 years would leave no upcoming stays after Aug 2027; shifting relative to today keeps the demo alive.
     shift = int(time.strftime("%Y")) + 1 - int(df.arrival_date_year.max())
     rows = []
-    for i, r in enumerate(df.itertuples(index=False)):
+    # Rows are typed Any on purpose: with pandas-stubs installed (as requirements-dev.lock pins), itertuples() yields
+    # a union of every scalar type and each arithmetic line fails type-checking; the CSV schema is fixed and checked by
+    # tests/test_session_db_config.py::test_seed_maps_deposit_type_to_terms.
+    records: Iterable[Any] = df.itertuples(index=False)
+    for i, r in enumerate(records):
         nights = int(r.stays_in_weekend_nights + r.stays_in_week_nights)
         date = f"{int(r.arrival_date_year) + shift:04d}-{MONTHS[r.arrival_date_month]:02d}-{int(r.arrival_date_day_of_month):02d}"
         children = 0 if pd.isna(r.children) else int(r.children)
