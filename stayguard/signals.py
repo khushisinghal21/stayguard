@@ -248,7 +248,7 @@ OFF_PLATFORM_PAYMENT = _rx(
     r"\bpaytm\b",
     r"\bgpay\b",
     r"\bphonepe\b",
-    r"\b[\w.-]+@(?:ok\w+|ybl|paytm|upi|ibl|axl)\b",
+    r"(?<![\w.-])[\w.-]{1,64}@(?:ok\w+|ybl|paytm|upi|ibl|axl)\b",  # bounded: unbounded was O(n^2) (round 4, B F2)
     r"transfer (?:the )?(?:money|amount|payment|funds)",
     r"ट्रांसफर",
     r"यूपीआई",
@@ -452,9 +452,12 @@ GOAL = _rx(
 # Review round 3: "give our front desk a ring on <number>" moved the guest to a phone call with no signal at all (only
 # "call us on" was known). A phone handoff is common and legitimate, so it is its own flag: it never takes the quiet
 # fast path or the model's low-risk path, and the judges decide; it is not a hard rule.
+# Any up-to-three non-word characters between digits (a middle dot "21·12·34", keycap marks), not only " ()./-"
+# (round 4, B F1: other separators removed the message from the judges).
+_PHONE_NO = r"(?:\+|\b00)?\d(?:[^\w\n]{0,3}\d){7,}"
 PHONE_HANDOFF = _rx(
-    r"\b(?:ring|call|phone|dial|text|sms|contact|reach)\b[^.!?\n]{0,40}?(?:\+|\b00)?\d[\d ()./-]{7,}\d",
-    r"(?:\+|\b00)\d[\d ()./-]{7,}\d[^.!?\n]{0,30}\b(?:ring|call|phone|dial|text)\b",
+    rf"\b(?:ring|call|phone|dial|text|sms|contact|reach)\b[^\n]{{0,40}}?{_PHONE_NO}",
+    r"(?:\+|\b00)\d(?:[^\w\n]{0,3}\d){7,}[^.!?\n]{0,30}\b(?:ring|call|phone|dial|text)\b",
 )
 
 # A payment written as a fact rather than an instruction ("a 50 EUR fee is payable to our account x@y before
@@ -481,7 +484,7 @@ _PAY_VERB = r"\b(?:pay|paid|payable|settle[ds]?|transfer(?:red)?|send|sent|due|r
 PRE_ARRIVAL = re.compile(rf"{_PAY_VERB}[^.!?;\n]{{0,40}}{_PRE}|{_PRE}[^.!?;\n]{{0,25}}{_PAY_VERB}", re.IGNORECASE)
 # An e-mail address right after a payment verb is a destination ("send the deposit to x@y"); an e-mail elsewhere in a
 # sentence that mentions a price is not.
-PAY_TO_EMAIL = re.compile(rf"{_PAY_VERB}[^.!?\n]{{0,60}}[\w.+-]+@[\w-]+\.[\w.-]+", re.IGNORECASE)
+PAY_TO_EMAIL = re.compile(rf"{_PAY_VERB}[^.!?\n]{{0,60}}[\w.+-]{{1,64}}@[\w-]{{1,63}}\.[\w.-]{{1,253}}", re.IGNORECASE)
 
 
 def _is_money_ask_sentence(sent: str) -> bool:
@@ -595,8 +598,10 @@ def _luhn_ok(digits: str) -> bool:
 # Up to three non-alphanumeric characters (or underscores) between digits: round 3 (A8) showed "4111 / 1111 / ..." and
 # "|", "*", ":", "+" separators still got through the round-2 single-separator form.
 CARD_RX = re.compile(r"(?<!\d)\d(?:(?:[^\w\n]|_){0,3}\d){12,18}(?!\d)")
-EMAIL_RX = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
-UPI_RX = re.compile(r"\b[\w.-]+@(?:ok\w+|ybl|paytm|upi|ibl|axl)\b", re.IGNORECASE)
+# Local parts bounded to 64 characters and anchored: "[\w.+-]+@" backtracked quadratically over a long run of word
+# characters with no "@" (5,000 characters of "a.a.a." took ~0.5 s per check; review round 4, B F2).
+EMAIL_RX = re.compile(r"(?<![\w.+-])[\w.+-]{1,64}@[\w-]{1,63}\.[\w.-]{1,253}\b")
+UPI_RX = re.compile(r"(?<![\w.-])[\w.-]{1,64}@(?:ok\w+|ybl|paytm|upi|ibl|axl)\b", re.IGNORECASE)
 IBAN_RX = re.compile(r"\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}(?:\s?[A-Z0-9]{1,3})?\b")
 PHONE_RX = re.compile(r"(?<![\w/-])(?!\d{4}-\d{2}-\d{2}\b)\+?\d[\d\s().-]{7,}\d\b")
 AADHAAR_RX = re.compile(r"\b\d{4}\s\d{4}\s\d{4}\b")

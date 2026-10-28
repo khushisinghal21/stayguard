@@ -270,3 +270,22 @@ def test_wallet_names_are_not_an_instruction_to_pay(engine):
     """Found on held-out v1 after the round-4 fixes (v1 is not blind; recorded in docs/ADVERSARIAL_REVIEW.md)."""
     d = run(engine, "Please note we are a cash-free hotel; you can pay at check-in by card or Apple Pay.")
     assert not extract("you can pay at check-in by card or Apple Pay").reassured_sensitive and d.decision != "hold"
+
+
+# ---------------------------------------------------------------------------------------------- B (reduced scope)
+@pytest.mark.parametrize("text", [("a" + ".a" * 2499)[:5000], ("a-" * 2500)[:5000]])
+def test_long_word_runs_do_not_backtrack_quadratically(engine, text):
+    from stayguard.signals import EMAIL_RX
+
+    t0 = time.perf_counter()
+    EMAIL_RX.search(text)
+    assert time.perf_counter() - t0 < 0.02  # ~0.1 s per pattern before the bound
+    t0 = time.perf_counter()
+    run(engine, text)
+    assert time.perf_counter() - t0 < 0.3
+
+
+def test_phone_handoff_with_other_separators_is_still_judged(engine):
+    t = "For an early check-in please ring our reception on 21·12·34·56·78 any time before 3pm."
+    assert extract(t).phone_handoff
+    assert run(engine, t).path in ("judges", "degraded")
