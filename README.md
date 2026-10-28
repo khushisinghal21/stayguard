@@ -52,6 +52,15 @@ feed is pinned by SHA-256 in `data/MANIFEST.json`, and reports refuse to compare
 <!-- results:start -->
 | | |
 |---|---|
+| **Held-out v2** (blind to its text; author instructed not to read the code; first run frozen): scams caught (74 scams, 95% CI) | **89.2%** (80.1%-94.4%) |
+| Held-out v2: legitimate messages wrongly held (95% CI) / delivered with a warning (74 legit) | **13.5%** (7.5%-23.1%) / 13.5% |
+| Held-out v2: legitimate payment messages (26) held / warned / delivered clean | 8 / 4 / 14 |
+| Held-out v2: of those, the ones on pay-at-property bookings (the case the payment rule holds): held / total | 7 / 13 |
+| Held-out v2, same messages, caught: StayGuard's classifier alone / generic spam filter / StayGuard with judges down | 89.2% / 39.2% / 87.8% |
+| Held-out v2: StayGuard's classifier alone wrongly held / spam filter wrongly held | 24.3% / 8.1% |
+| Held-out v2 legit messages held only by the full system / only by its classifier (paired McNemar p) | 2 / 10 (p = 0.039) |
+| Held-out v2: scams caught only by the full system / only by its classifier (paired McNemar p) | 1 / 1 (p = 1) |
+| Held-out v2 messages that crashed and failed closed (would count as caught) | 0 |
 | Held-out v1 scams caught, first blind run (frozen before any v1 result was seen; 95% CI) | **66.7%** of 66 (54.7%-76.8%), wrongly held 1.7% |
 | Held-out v1 first blind run vs its own classifier, same 66 scams (`eval/reconstruct_first_look.py`): full system caught / classifier alone would have caught (paired McNemar p) | 44 / 57 (p = 0.00024) |
 | Held-out v1 scams caught now (NOT blind: later fixes targeted its first-run misses) | 87.9% of 66 |
@@ -71,7 +80,7 @@ feed is pinned by SHA-256 in `data/MANIFEST.json`, and reports refuse to compare
 | Same on the SMS-heavy 1,000-message mix | 1.0% / $0.0020 (vs $0.1956 if every message went to the judges) |
 | Legit held-out v1 messages with a common emoji added (❤️, 👍, 👨‍👩‍👧 …): warned / held | 3.4% / 1.7% |
 | Evaluation checks that crashed and failed closed, across every run and rewrite (would count as caught) | 0 |
-| Latency p50 / p95, in-process with the offline judge on the SMS-heavy mix (a hosted LLM would add an estimated 1-3 s to every judged message, so p95 on hotel messages would be seconds) | 2.4 ms / 4.1 ms |
+| Latency p50 / p95, in-process with the offline judge on the SMS-heavy mix (a hosted LLM would add an estimated 1-3 s to every judged message, so p95 on hotel messages would be seconds) | 2.7 ms / 4.5 ms |
 <!-- results:end -->
 
 ### Honest caveats
@@ -80,10 +89,22 @@ feed is pinned by SHA-256 in `data/MANIFEST.json`, and reports refuse to compare
    Held-out v1 caught <!-- num:heldout_first_look_caught -->66.7%<!-- /num --> of scams on its first blind run. A later
    commit then fixed exactly its first-run misses with patterns that appear only in that set (review round 1, finding
    C1), so today's v1 figure of <!-- num:heldout_caught -->87.9%<!-- /num --> is a tuned number, not a blind one.
-   Held-out v2 was written after that by an agent instructed not to read the code, and is run exactly once, after the
-   last review round; its frozen first run is the number to quote. Its text was never seen, but its brief and language
-   mix were known while later rules were written, so it is less blind than "never seen" suggests (DECISIONS #35).
-2. **The classifier alone does most of the work on these sets.** On held-out v1 StayGuard's own classifier, with no
+   Held-out v2 was written after that by an agent instructed not to read the code, and was run exactly once, after the
+   last review round (`eval/heldout_v2_first_look.json`, commit `cb526dc`): <!-- num:v2_caught -->89.2%<!-- /num --> of
+   scams caught, and **<!-- num:v2_false_holds -->13.5%<!-- /num --> of legitimate messages wrongly held**, far more than
+   any earlier set showed. Most of those false holds are genuine payment and card-update messages (a declined card, a
+   pre-authorisation, a refund, a group pro-forma) caught by the payment-terms and card rules (two of them by the pre-arrival
+   timing rule added in round 3, one of those negated: "we will not charge it before you arrive"); <!-- num:v2_legit_payment_pap_held -->7<!-- /num --> of the
+   <!-- num:v2_legit_payment_pap_n -->13<!-- /num --> legitimate payment messages on pay-at-property bookings were held.
+   These are v2 results and are not tuned away; DECISIONS #37 lists them. Its text was never seen before that run, but
+   its brief and language mix were known while later rules were written, so it is less blind than "never seen"
+   suggests (DECISIONS #35).
+2. **The classifier alone does most of the work on these sets.** On held-out v2 the full system and its classifier
+   caught the same number of scams (paired p = <!-- num:v2_mcnemar_p -->1<!-- /num -->); where they differ is false holds:
+   the classifier alone would have wrongly held <!-- num:v2_classifier_only_false_holds -->24.3%<!-- /num --> of legitimate
+   messages against the full system's <!-- num:v2_false_holds -->13.5%<!-- /num --> (held only by the classifier
+   <!-- num:v2_legit_only_classifier_held -->10<!-- /num -->, only by the full system
+   <!-- num:v2_legit_only_full_held -->2<!-- /num -->, p = <!-- num:v2_legit_mcnemar_p -->0.039<!-- /num -->). On held-out v1 StayGuard's own classifier, with no
    rules, links or judges, caught <!-- num:heldout_classifier_only_caught -->84.8%<!-- /num --> (paired McNemar against the
    full system today: p = <!-- num:heldout_mcnemar_p -->0.73<!-- /num -->). On v1's only blind run it was worse than that:
    a reviewer's reconstruction found the full pipeline caught significantly fewer scams than its own classifier

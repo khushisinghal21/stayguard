@@ -12,7 +12,7 @@ domains and languages the model has never seen, and it is fully explainable. The
 at the desk" or "you pay the driver directly".
 
 ### 2. Rules first, model second, LLM last
-Rules settle almost all of an SMS-heavy mix in a few milliseconds (p50 <!-- num:p50_ms -->2.4 ms<!-- /num -->, in-process,
+Rules settle almost all of an SMS-heavy mix in a few milliseconds (p50 <!-- num:p50_ms -->2.7 ms<!-- /num -->, in-process,
 offline judge). On hotel messages the rules settle less, and of what they leave the judges, not the model, settle most
 (review round 2, C7: the earlier "the model settles most of the rest" was wrong; path counts are in `eval/report.md`). The judges see only what's left (<!-- num:judge_share -->1.0%<!-- /num --> of the SMS-heavy mix, but
 <!-- num:hotel_judge_share -->14.5%<!-- /num --> of the hotel messages in held-out v1, about
@@ -279,13 +279,32 @@ with common emoji appended (<!-- num:legit_emoji_warned_heldout -->3.4%<!-- /num
 real zero-width characters into a legitimate message still warns it almost always
 (<!-- num:legit_zero_width_warned_heldout -->98.3%<!-- /num -->), which is deliberate: a hotel has no reason to write them.
 
+### 37. What the one blind held-out v2 run showed, and what we did with it
+Run once at `cb526dc` from a clean tree with no overrides; frozen in `eval/heldout_v2_first_look.json` with its
+conditions (offline judge, thresholds 0.03 / 0.52, data manifest `c0cc5d1b1f71ce5d`). StayGuard caught
+<!-- num:v2_caught -->89.2%<!-- /num --> of <!-- num:v2_n_scam -->74<!-- /num --> scams and wrongly held
+<!-- num:v2_false_holds -->13.5%<!-- /num --> of legitimate messages, with <!-- num:v2_legit_warned -->13.5%<!-- /num -->
+delivered under a warning. Against its own classifier: the same scams caught; fewer false holds (the rules release
+legitimate messages the model dislikes). What it found, read only after the freeze:
+- **False holds** fall in a few classes: a declined or expired card with "update it in the app"; a pre-authorisation
+  or damage deposit described in advance; a refund; a group pro-forma by bank transfer; a guarantee "we will not charge
+  before you arrive"; WhatsApp contact lines that the model scores high. Two of the seven payment-rule holds come from the
+  pre-arrival timing rule added in round 3 ("charged in advance", and a negated "we will not charge it before you
+  arrive"); the rest from card-data words and the older payment-ask rules.
+- **Scams delivered clean**: a Dutch deposit request by spaced IBAN ("vooraf overmaken naar NL63 RABO …"), a Chinese
+  WeChat deposit request (微信 … 押金), and a guest-to-hotel complaint link. Several others were warned, not held.
+- Chosen over: fixing these now. Any change made after reading v2 results would make v2 a tuned set like v1, and
+  there is no third blind set to measure the fix on. They are listed here and in the book's weaknesses chapter as the
+  first work for the next round, to be measured on fresh data.
+
 ## Known limits
 - Dev and held-out v1 have the same author as the rules, and v1 was tuned on after its first run (#28). Held-out v2
   has a different author but is still small (148) and written, not collected. Real validation needs labelled
   platform traffic.
 - Login data is synthetic, and its attacks are generated from the features the model scores, so its detection is
   true by construction.
-- Genuine pre-arrival payment requests on no-deposit bookings are held by design (#32).
+- Genuine pre-arrival payment requests on no-deposit bookings are held by design (#32), and on held-out v2 the
+  payment and card rules also held genuine card-update, pre-authorisation and refund messages (#37).
 - Every reported number used the offline deterministic judge; real LLM judges are unmeasured.
 - The link layer can't see where shorteners lead without network access (they get a warning, not a pass).
 - Lexicon-free lures on fresh brand-free domains can be delivered with a warning (#26).
