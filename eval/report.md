@@ -1,10 +1,86 @@
 # StayGuard evaluation report
 
-Generated 2026-10-28 06:40 at commit `3756222`. Reproduce with `python -m eval.evaluate`.
+Generated 2026-10-28 06:41 at commit `cb526dc`. Reproduce with `python -m eval.evaluate`.
 Data manifest `c0cc5d1b1f71ce5d` (feeds fetched 2026-10-27T06:19:37+0000). Held-out set sha256 `9defc0ab5ab31ab4...`, committed in `04376a3`.
 Model thresholds: MODEL_LOW 0.03, MODEL_HIGH 0.52 (eval/calibration.json).
 
-**Dev** data was looked at while the rules were built, so dev numbers are optimistic. **Held-out v1** was blind only for its first run: later fixes were made after its misses were read (review round 1, finding C1), so only its frozen first look is a blind number. **Held-out v2** was written afterwards by an agent instructed not to read the code (self-reported; same model family) and committed before any run. It has NOT been run yet; no v2 number exists in this report. Its text was never seen, but its language mix and brief were known while later rules were written (DECISIONS #35).
+**Dev** data was looked at while the rules were built, so dev numbers are optimistic. **Held-out v1** was blind only for its first run: later fixes were made after its misses were read (review round 1, finding C1), so only its frozen first look is a blind number. **Held-out v2** was written afterwards by an agent instructed not to read the code (self-reported; same model family) and committed before any run. Its one blind run is frozen in `eval/heldout_v2_first_look.json` (section A2). Its text was never seen, but its language mix and brief were known while later rules were written (DECISIONS #35).
+
+## A2. Held-out v2 (blind first run)
+
+Frozen in `eval/heldout_v2_first_look.json` (commit `cb526dc`, 2026-10-28 06:41). 148 messages (74 scams), sources in `data/curated/HELDOUT_V2_SOURCES.md`.
+
+| System | Caught | False holds | Legit warned |
+|---|---|---|---|
+| baseline_blocklist_only | 0% | 0% | - |
+| baseline_generic_spam_filter | 39% | 8% | - |
+| baseline_stayguard_classifier_only | 89% | 24% | - |
+| stayguard_full | 89% | 14% | 14% |
+| stayguard_rules_only | 64% | 11% | - |
+| stayguard_zero_day_links_blocklist_off | 89% | 14% | 14% |
+| stayguard_degraded_llm_down | 88% | 14% | 27% |
+
+StayGuard caught 89.2% (80%-94%) of scams and falsely held 13.5% (8%-23%) of legitimate messages (95% Wilson).
+
+| Category | n | Accuracy | Held | Warned | Delivered clean |
+|---|---|---|---|---|---|
+| legit_logistics | 17 | 94% | 1 | 2 | 14 |
+| legit_payment | 26 | 69% | 8 | 4 | 14 |
+| legit_template | 4 | 100% | 0 | 0 | 4 |
+| multilingual | 53 | 87% | 21 | 8 | 24 |
+| obfuscated | 5 | 100% | 5 | 0 | 0 |
+| reported_pattern | 23 | 96% | 22 | 0 | 1 |
+| reported_wording | 20 | 95% | 19 | 1 | 0 |
+
+Paired exact McNemar test vs StayGuard's classifier alone on the same scams: full caught 1 the classifier missed, the classifier caught 1 the full system missed, p = 1.0. Messages that crashed and failed closed: 0.
+
+| Language | n | Accuracy |
+|---|---|---|
+| ar | 3 | 100% |
+| de | 6 | 67% |
+| en | 94 | 88% |
+| es | 7 | 100% |
+| fr | 4 | 75% |
+| hi | 4 | 100% |
+| it | 4 | 100% |
+| ja | 4 | 100% |
+| nl | 4 | 75% |
+| pl | 4 | 50% |
+| pt | 4 | 100% |
+| ru | 3 | 100% |
+| tr | 3 | 100% |
+| zh | 4 | 75% |
+
+Misses, false holds and warned legit messages:
+
+- `v2-007` (multilingual, fr) label=1 -> **warn** via judges ['JUDGES_UNSURE']: Cher client, votre carte bancaire doit être mise à jour avant votre arrivée. Simple formalité : aucun débit ne
+- `v2-012` (multilingual, nl) label=1 -> **deliver** via rule ['NO_PAYMENT_ASK']: Hallo! Kleine formaliteit: wilt u de borg van 150 euro vooraf overmaken naar NL63 RABO 0347 1182 90 t.n.v. M. 
+- `v2-029` (legit_payment, en) label=0 -> **hold** via model ['MODEL_HIGH_RISK']: For quick questions during your stay you can also reach us on WhatsApp (+351 913 220 145). Please note we will
+- `v2-034` (multilingual, it) label=0 -> **warn** via judges ['JUDGES_UNSURE']: Buonasera! Il check-in è dalle 14:00 alle 20:00. Se arrivate più tardi scriveteci su WhatsApp al +39 347 811 2
+- `v2-037` (legit_payment, en) label=0 -> **warn** via judges ['JUDGES_UNSURE']: Dear guest, we have cancelled your reservation free of charge as requested. As the prepayment was made through
+- `v2-040` (legit_logistics, en) label=0 -> **warn** via judges ['JUDGES_UNSURE']: Hi Tom, check-in is from 15:00. If you arrive after 22:00 please message us on WhatsApp at +30 694 512 7731 so
+- `v2-042` (legit_logistics, en) label=0 -> **hold** via model ['MODEL_HIGH_RISK']: Online check-in is now open for your stay. To speed up your arrival, please complete the guest registration fo
+- `v2-043` (multilingual, nl) label=0 -> **warn** via judges ['JUDGES_UNSURE']: Beste gast, de toeristenbelasting bedraagt 12,5% van de kamerprijs en is niet inbegrepen. U betaalt deze bij a
+- `v2-054` (legit_payment, en) label=0 -> **warn** via judges ['JUDGES_LEGIT', 'REASSURANCE_NEXT_TO_PAYMENT']: Just a reminder that your reservation is pay at the property: nothing has been charged and you will pay the fu
+- `v2-059` (legit_payment, en) label=0 -> **hold** via rule ['PAY_ASK_ON_PAY_AT_HOTEL', 'OFF_PLATFORM_PAYMENT']: Dear Ms. Lindqvist, as discussed with your office, please find attached the pro-forma invoice for the group bo
+- `v2-063` (multilingual, pl) label=1 -> **warn** via judges ['JUDGES_UNSURE']: Witamy! W związku z weryfikacją rezerwacji nr 4012883190 skontaktujemy się z Państwem przez WhatsApp. Prosimy 
+- `v2-064` (multilingual, pl) label=1 -> **warn** via judges ['JUDGES_UNSURE']: Dzień dobry, niestety Państwa wcześniejsza płatność nie została zaksięgowana z powodu błędu systemu. Prosimy o
+- `v2-067` (legit_logistics, en) label=0 -> **warn** via judges ['OBFUSCATED_TEXT', 'JUDGES_LEGIT']: From the airport, take the Aerobus to Plaça Catalunya (every 5 minutes, about 35 minutes), then walk 6 minutes
+- `v2-072` (multilingual, de) label=0 -> **hold** via rule ['CARD_DATA_REQUEST']: Hallo Herr Wagner, leider wurde Ihre Kreditkarte bei der Vorauszahlung abgelehnt. Booking.com wird Sie bitten,
+- `v2-079` (legit_payment, en) label=0 -> **hold** via rule ['PAY_ASK_ON_PAY_AT_HOTEL', 'CARD_DATA_REQUEST']: Hi Sarah, we were not able to validate the card on your reservation. You should receive a message from Booking
+- `v2-081` (multilingual, de) label=1 -> **warn** via judges ['JUDGES_UNSURE']: Guten Tag, mein Name ist Diana, ich bin Check-in-Managerin. Ich muss Ihre Gästedaten und Zahlungsangaben vor d
+- `v2-082` (reported_wording, en) label=1 -> **warn** via judges ['JUDGES_LEGIT', 'UNVERIFIED_LINK']: Hello, I stayed at your hotel last week and I strongly believe I left my passport in the room. Here are the ph
+- `v2-083` (legit_payment, en) label=0 -> **warn** via judges ['JUDGES_UNSURE']: As your rate is non-refundable, please note that in case of no-show the full amount will be charged, as stated
+- `v2-084` (legit_payment, en) label=0 -> **hold** via rule ['PAY_ASK_ON_PAY_AT_HOTEL', 'CARD_DATA_REQUEST']: Please note that at check-in we take a pre-authorisation of EUR 100 on your credit card as a security deposit 
+- `v2-087` (legit_payment, en) label=0 -> **hold** via rule ['PAY_ASK_ON_PAY_AT_HOTEL', 'CARD_DATA_REQUEST']: Dear guest, unfortunately the credit card provided for your reservation was declined when we tried to pre-auth
+- `v2-091` (legit_payment, en) label=0 -> **hold** via rule ['PAY_ASK_ON_PAY_AT_HOTEL']: Apologies, we noticed we charged the city tax twice at check-out. We have refunded EUR 12.60 to your card toda
+- `v2-092` (legit_payment, en) label=0 -> **hold** via rule ['PAY_ASK_ON_PAY_AT_HOTEL']: Hi! The card you provided on Booking.com is only a guarantee. We will not charge it before you arrive; payment
+- `v2-093` (reported_pattern, en) label=1 -> **deliver** via rule ['NO_PAYMENT_ASK']: Hello, I had problems during my stay that have not yet been resolved. I have filed a complaint with Booking, p
+- `v2-097` (multilingual, zh) label=1 -> **deliver** via rule ['NO_PAYMENT_ASK']: 您好，为了确认您的预订，请添加我们前台的微信 hotel_front_88 并支付押金500元，否则房间将释放给其他客人。
+- `v2-105` (legit_payment, en) label=0 -> **hold** via rule ['PAY_ASK_ON_PAY_AT_HOTEL']: Hi Marco, see you soon! As mentioned in the house rules, if there is any damage during your stay we may ask, t
+- `v2-107` (multilingual, hi) label=0 -> **warn** via judges ['JUDGES_UNSURE']: Namaste! Aapka room ready hai. Agar aapko station se pickup chahiye to hamein WhatsApp par +91 94140 22781 pe 
+- `v2-123` (legit_payment, en) label=0 -> **warn** via judges ['JUDGES_UNSURE']: Hi Priya, we received a notification that the card used for the prepayment has expired. Booking.com should hav
+- `v2-125` (multilingual, ar) label=0 -> **warn** via judges ['JUDGES_UNSURE']: مرحبًا بكم! تسجيل الدخول من الساعة 2 ظهرًا وتسجيل المغادرة حتى الساعة 12 ظهرًا. يتوفر موقف سيارات مجاني أمام ا
 
 ## A. Messages: StayGuard vs baselines (dev and held-out v1)
 
@@ -135,7 +211,7 @@ Synthetic data is separable by construction, so this is a plumbing check, not ev
 ## E. Cost and latency (970 SMS test-split messages + 30 held-out scams)
 
 - Paths: {'rule': 985, 'model': 5, 'judges': 10}; share sent to the AI judges: **1.0%** on this SMS-heavy mix, **14.5%** on the held-out v1 hotel messages (estimated $0.0288 per 1,000 at that share).
-- Latency p50 2.39 ms, p95 4.12 ms, p99 6.64 ms
+- Latency p50 2.67 ms, p95 4.53 ms, p99 6.58 ms
 - **Estimated** LLM cost: $0.001991 per 1,000 messages, vs $0.19564 if every message went to the judges ($0.000199 per judged message). Price: Claude Haiku 5.5 $0.1/MTok in, $0.5/MTok out (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-27).
 - ESTIMATE, not a bill: input tokens = prompt characters / 4, output = 150 tokens per judge, 2 judges. Latency is in-process, excludes network and DB, and the judge path ran offline-deterministic; a hosted LLM adds an estimated 1-3 s to judged messages only.
 

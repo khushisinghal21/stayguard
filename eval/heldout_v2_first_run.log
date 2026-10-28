@@ -1,0 +1,97 @@
+training classifier ...
+training session model ...
+A messages ...
+B real sms ...
+C links ...
+F robustness ...
+E cost/latency ...
+A held-out v2 (blind) ...
+{
+ "model_low": 0.03,
+ "model_high": 0.52,
+ "heldout_first_look_caught": 0.6667,
+ "heldout_first_look_false_holds": 0.0172,
+ "heldout_caught": 0.878788,
+ "heldout_false_holds": 0.017241,
+ "heldout_legit_warned": 0.034483,
+ "heldout_n": 124,
+ "heldout_n_scam": 66,
+ "heldout_spam_filter_caught": 0.19697,
+ "heldout_spam_filter_false_holds": 0.017241,
+ "heldout_blocklist_caught": 0.0,
+ "heldout_degraded_caught": 0.727273,
+ "dev_caught": 1.0,
+ "dev_false_holds": 0.0,
+ "sms_ham_held": 0.0,
+ "sms_ham_n": 1130,
+ "c1_heldout": 0.884615,
+ "c1_heldout_n": 182,
+ "c2_heldout": 0.049,
+ "c3_heldout_fp": 7e-05,
+ "c3_heldout_n": 99969,
+ "robust_combined_heldout": 0.651515,
+ "robust_combined_heldout_changed": 0.651515,
+ "heldout_mcnemar_p": 0.72656,
+ "judge_share": 0.01,
+ "hotel_judge_share": 0.1452,
+ "hotel_est_cost_per_1000": 0.0288,
+ "heldout_classifier_only_caught": 0.848485,
+ "heldout_classifier_only_false_holds": 0.0,
+ "heldout_blocklist_urls_listed": 0,
+ "heldout_blocklist_urls": 35,
+ "c3_heldout_brand_fp": 0.081633,
+ "c3_heldout_brand_n": 49,
+ "heldout_first_look_caught_ci": [
+  0.5466,
+  0.7684
+ ],
+ "sms_ham_held_ci": [
+  0.0,
+  0.0034
+ ],
+ "fail_closed_crashes": 0,
+ "legit_emoji_warned_heldout": 0.034483,
+ "legit_emoji_held_heldout": 0.017241,
+ "legit_zero_width_warned_heldout": 0.982759,
+ "first_look_full_caught_n": 44,
+ "first_look_classifier_caught_n": 57,
+ "first_look_only_classifier": 13,
+ "first_look_only_full": 0,
+ "first_look_mcnemar_p": 0.00024,
+ "p50_ms": 2.67,
+ "p95_ms": 4.53,
+ "est_cost_per_1000": 0.001991,
+ "est_cost_per_1000_all_llm": 0.19564,
+ "v2_fail_closed_crashes": 0,
+ "v2_spam_filter_false_holds": 0.081081,
+ "v2_legit_payment_pap_held": 7,
+ "v2_legit_payment_pap_n": 13,
+ "v2_legit_payment_held": 8,
+ "v2_legit_payment_warned": 4,
+ "v2_legit_payment_clean": 14,
+ "v2_mcnemar_p": 1.0,
+ "v2_legit_only_full_held": 2,
+ "v2_legit_only_classifier_held": 10,
+ "v2_legit_mcnemar_p": 0.03857,
+ "v2_only_full": 1,
+ "v2_only_classifier": 1,
+ "v2_n": 148,
+ "v2_n_scam": 74,
+ "v2_caught": 0.891892,
+ "v2_caught_ci": [
+  0.8009,
+  0.9442
+ ],
+ "v2_false_holds": 0.135135,
+ "v2_false_holds_ci": [
+  0.0751,
+  0.2312
+ ],
+ "v2_legit_warned": 0.135135,
+ "v2_classifier_only_caught": 0.891892,
+ "v2_classifier_only_false_holds": 0.243243,
+ "v2_spam_filter_caught": 0.391892,
+ "v2_degraded_caught": 0.878378,
+ "v2_legit_payment_accuracy": 0.6923,
+ "v2_legit_payment_n": 26
+}
