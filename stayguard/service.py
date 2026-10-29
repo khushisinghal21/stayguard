@@ -34,12 +34,15 @@ def payload_hash(
     direction: str,
     payment_terms: str | None = None,
     property_id: str | None = None,
+    first_in_thread: bool | None = None,
 ) -> str:
     """Everything that can change a decision is in the hash (review round 1: terms and property were missing, so a
-    resend with different terms silently replayed the old decision)."""
-    body = json.dumps(
-        [text, reservation_id or "", session_id or "", direction, payment_terms or "", property_id or ""], ensure_ascii=True
-    )
+    resend with different terms silently replayed the old decision). first_in_thread feeds the context models, so it is
+    in the hash too; left out when not given, so earlier keys still match."""
+    parts: list[Any] = [text, reservation_id or "", session_id or "", direction, payment_terms or "", property_id or ""]
+    if first_in_thread is not None:
+        parts.append(first_in_thread)
+    body = json.dumps(parts, ensure_ascii=True)
     return hashlib.sha256(body.encode()).hexdigest()
 
 
@@ -63,6 +66,9 @@ def fail_closed_response(message_id: str | None, error: str, masked_text: str = 
         "trace": [],
         "error": error,
         "versions": VERSIONS,
+        # a fail-closed hold is enforced even in shadow mode: shadow mode measures the engine, it is not a way to
+        # deliver messages StayGuard could not check
+        "enforced": True,
     }
 
 
@@ -187,11 +193,12 @@ class Service:
         payment_terms: str | None = None,
         property_id: str | None = None,
         message_id: str | None = None,
+        first_in_thread: bool | None = None,
     ) -> dict[str, Any]:
         mid = message_id or "M-" + uuid.uuid4().hex[:10]
         try:
             text = clean_text(text)
-            ph = payload_hash(text, reservation_id, session_id, direction, payment_terms, property_id)
+            ph = payload_hash(text, reservation_id, session_id, direction, payment_terms, property_id, first_in_thread)
             replay = self._claim(mid, ph, reservation_id, session_id)
         except IdempotencyConflict:
             raise
@@ -201,7 +208,9 @@ class Service:
         if replay is not None:
             return {**replay, "idempotent_replay": True}
         with trace(mid):
-            return self._check_message(mid, text, reservation_id, session_id, direction, payment_terms, property_id)
+            return self._check_message(
+                mid, text, reservation_id, session_id, direction, payment_terms, property_id, first_in_thread
+            )
 
     def _claim(self, mid: str, ph: str, reservation_id: str | None, session_id: str | None) -> dict[str, Any] | None:
         """Atomically claim a message_id. Returns the stored response for an exact replay, raises IdempotencyConflict for
@@ -242,6 +251,7 @@ class Service:
         direction: str,
         payment_terms: str | None,
         property_id: str | None,
+        first_in_thread: bool | None = None,
     ) -> dict[str, Any]:
         masked = ""
         try:
@@ -271,16 +281,25 @@ class Service:
                 }
                 self._store_response(mid, out_revoked)
                 return out_revoked
+            if first_in_thread is None and reservation_id:
+                # no earlier stored message on this reservation = this one opens the conversation (context model feature)
+                prior = db.con().execute("SELECT COUNT(*) FROM messages WHERE reservation_id=?", (reservation_id,)).fetchone()[0]
+                first_in_thread = prior == 0
             ctx = {
                 "payment_terms": terms,
                 "direction": direction,
                 "session": sess,
                 "property_domains": prop["domains"] if prop else [],
+                "first_in_thread": first_in_thread,
             }
             d = self.engine.check(text, ctx)
             out = {
                 "message_id": mid,
                 **d.as_dict(),
+                # Shadow mode (STAYGUARD_ENFORCE=0, DECISIONS #41): the decision is computed, stored and returned unchanged,
+                # and enforced=false tells the platform not to act on it. The engine itself never changes its answer.
+                "enforced": config.ENFORCE,
+                "first_in_thread": first_in_thread,
                 "payment_terms": terms,
                 "reservation": {
                     k: res[k]
@@ -346,6 +365,21 @@ class Service:
             except Exception:  # noqa: BLE001 - the store itself may be what failed
                 log.exception("audit/store failed while failing closed for %s", mid)
             return out_fc
+
+    def label_message(self, message_id: str, label: str, source: str, note: str = "") -> dict[str, Any] | None:
+        """Record a scam/legit label on a stored message (the feedback queue, DECISIONS #41). Never changes the stored
+        decision. Returns None if the message is unknown."""
+        if label not in ("scam", "legit") or source not in ("hotel", "guest", "analyst"):
+            raise ValueError("label must be scam|legit and source hotel|guest|analyst")
+        with db.tx() as t:
+            if t.execute("SELECT 1 FROM messages WHERE id=?", (message_id,)).fetchone() is None:
+                return None
+            t.execute(
+                "INSERT INTO labels (message_id, created, label, source, note) VALUES (?,?,?,?,?)",
+                (message_id, time.time(), int(label == "scam"), source, note[:500]),
+            )
+        db.audit("message.labelled", {"message_id": message_id, "label": label, "source": source})
+        return {"message_id": message_id, "label": label, "source": source}
 
     def _store_response(self, mid: str, out: dict[str, Any]) -> None:
         with db.tx() as t:
