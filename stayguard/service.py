@@ -436,7 +436,7 @@ class Service:
             return {
                 "ok": False,
                 "error": "too_many_attempts",
-                "message": "Too many wrong PINs. Try again later, or open the Booking.com app instead.",
+                "message": "Too many wrong PINs. Try again later, or open your booking app instead.",
             }
         if not ok or res is None:
             return {"ok": False, "error": "not_found", "message": "Reservation number and PIN don't match."}
@@ -447,7 +447,7 @@ class Service:
             return {
                 "ok": False,
                 "error": "too_many_checks",
-                "message": "You've checked several messages today. If you're unsure, open your booking in the Booking.com app.",
+                "message": "You've checked several messages today. If you're unsure, open your booking in your booking app.",
             }
         c = db.con()
         d = self.engine.check(
@@ -481,7 +481,7 @@ class Service:
             "sent_through_platform": bool(sent),
             "platform_decision": sent[0] if sent else None,
             "links": d.as_dict()["links"],
-            "advice": "If in doubt, open your booking in the Booking.com app and use the "
+            "advice": "If in doubt, open your booking in your booking app and use the "
             "contact details there - never the ones in the message.",
         }
 

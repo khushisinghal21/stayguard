@@ -24,13 +24,15 @@ log = logging.getLogger("stayguard.engine")
 RANK = {"deliver": 0, "warn": 1, "hold": 2, "block": 3}
 VERSIONS = {"engine": "1.0.0", "rules": "2026-10-27", "classifier": ScamClassifier.version, "links": "feeds+heuristics-1"}
 
+# Platform-neutral on purpose: StayGuard is an independent project, so its guest-facing copy must not read as any real
+# platform's own wording (DECISIONS #45). A platform deploying it would put its own name here.
 BANNERS = {
-    "en": "Safety check: this message mentions payment. Booking.com never asks you to share card details or pay "
-    "through a link in chat. Only pay inside the Booking.com app or at the property.",
-    "hi": "सुरक्षा जांच: यह संदेश भुगतान के बारे में है। Booking.com कभी भी चैट में कार्ड की जानकारी या लिंक से "
-    "भुगतान नहीं मांगता। केवल Booking.com ऐप में या होटल पर ही भुगतान करें।",
-    "hinglish": "Safety check: is message me payment ki baat hai. Booking.com kabhi chat me card details ya link se "
-    "payment nahi maangta. Sirf Booking.com app me ya hotel pe hi pay karein.",
+    "en": "Safety check: this message mentions payment. Your booking platform never asks you to share card details or "
+    "pay through a link in chat. Only pay inside the platform's app or at the property.",
+    "hi": "सुरक्षा जांच: यह संदेश भुगतान के बारे में है। आपका बुकिंग प्लेटफ़ॉर्म कभी भी चैट में कार्ड की जानकारी या लिंक से "
+    "भुगतान नहीं मांगता। केवल प्लेटफ़ॉर्म के ऐप में या होटल पर ही भुगतान करें।",
+    "hinglish": "Safety check: is message me payment ki baat hai. Aapka booking platform kabhi chat me card details ya "
+    "link se payment nahi maangta. Sirf platform ke app me ya hotel pe hi pay karein.",
 }
 
 MAX_LINKS = 20
