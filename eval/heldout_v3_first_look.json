@@ -1,0 +1,2593 @@
+{
+  "generated": "2026-10-29 20:47:36",
+  "git_commit": "2ae841d6d698a3b935feed6244838b047d44f334",
+  "heldout_v3_sha256": "d260839140ddcb6239aef4057bfd6dc4448fada5fb7d794b3b29db99757ffd36",
+  "n": 312,
+  "n_scam": 156,
+  "n_legit": 156,
+  "pre_registered_primary": "candidate vs baseline_today: scams caught and legit held, exact McNemar, Holm over 2",
+  "arms": {
+    "baseline_today": {
+      "classifier": "tfidf",
+      "model_low": 0.03,
+      "model_high": 0.52
+    },
+    "today_recalibrated": {
+      "classifier": "tfidf",
+      "model_low": 0.03,
+      "model_high": 0.75
+    },
+    "today_platform_flow": {
+      "classifier": "tfidf",
+      "model_low": 0.03,
+      "model_high": 0.52,
+      "platform_flow_warn": true
+    },
+    "today_route_high": {
+      "classifier": "tfidf",
+      "model_low": 0.03,
+      "model_high": 0.52,
+      "route_model_high_to_judges": true
+    },
+    "tfidf_ctx": {
+      "classifier": "tfidf_ctx",
+      "model_low": 0.05,
+      "model_high": 0.85
+    },
+    "encoder_ctx": {
+      "classifier": "encoder_ctx",
+      "model_low": 0.06,
+      "model_high": 0.9
+    },
+    "candidate": {
+      "classifier": "encoder_ctx",
+      "model_low": 0.06,
+      "model_high": 0.9,
+      "platform_flow_warn": true,
+      "route_model_high_to_judges": true
+    },
+    "candidate_judges_down": "candidate with the judges forced down"
+  },
+  "systems": {
+    "baseline_today": {
+      "tp": 129,
+      "fn": 27,
+      "fp": 22,
+      "tn": 134,
+      "catch_rate": 0.826923,
+      "false_alarm_rate": 0.141026,
+      "precision": 0.854305,
+      "f1": 0.840391,
+      "legit_warned_rate": 0.089744,
+      "scam_warned_not_held_rate": 0.108974,
+      "catch_rate_ci95": [
+        0.7599,
+        0.8782
+      ],
+      "false_alarm_rate_ci95": [
+        0.095,
+        0.2043
+      ],
+      "fail_closed": 0,
+      "scams_delivered_clean": 10,
+      "p50_ms": 2.72,
+      "p95_ms": 5.42,
+      "judge_share": 0.128205,
+      "paths": {
+        "judges": 40,
+        "model": 44,
+        "rule": 228
+      },
+      "judge_reply_unusable": 0,
+      "by_group": {
+        "category:guest_message": {
+          "n": 17,
+          "held": 6,
+          "warned": 2,
+          "clean": 9
+        },
+        "category:legit_contact": {
+          "n": 25,
+          "held": 6,
+          "warned": 6,
+          "clean": 13
+        },
+        "category:legit_logistics": {
+          "n": 15,
+          "held": 0,
+          "warned": 1,
+          "clean": 14
+        },
+        "category:legit_payment": {
+          "n": 80,
+          "held": 16,
+          "warned": 6,
+          "clean": 58
+        },
+        "category:legit_template": {
+          "n": 9,
+          "held": 0,
+          "warned": 0,
+          "clean": 9
+        },
+        "category:multilingual_legit": {
+          "n": 19,
+          "held": 0,
+          "warned": 1,
+          "clean": 18
+        },
+        "category:multilingual_scam": {
+          "n": 70,
+          "held": 46,
+          "warned": 15,
+          "clean": 9
+        },
+        "category:obfuscated": {
+          "n": 10,
+          "held": 10,
+          "warned": 0,
+          "clean": 0
+        },
+        "category:reported_pattern": {
+          "n": 45,
+          "held": 45,
+          "warned": 0,
+          "clean": 0
+        },
+        "category:reported_wording": {
+          "n": 22,
+          "held": 22,
+          "warned": 0,
+          "clean": 0
+        },
+        "lang:en|label:0": {
+          "n": 85,
+          "held": 16,
+          "warned": 8,
+          "clean": 61
+        },
+        "lang:en|label:1": {
+          "n": 82,
+          "held": 79,
+          "warned": 2,
+          "clean": 1
+        },
+        "lang:non_en|label:0": {
+          "n": 71,
+          "held": 6,
+          "warned": 6,
+          "clean": 59
+        },
+        "lang:non_en|label:1": {
+          "n": 74,
+          "held": 50,
+          "warned": 15,
+          "clean": 9
+        }
+      }
+    },
+    "today_recalibrated": {
+      "tp": 126,
+      "fn": 30,
+      "fp": 19,
+      "tn": 137,
+      "catch_rate": 0.807692,
+      "false_alarm_rate": 0.121795,
+      "precision": 0.868966,
+      "f1": 0.837209,
+      "legit_warned_rate": 0.083333,
+      "scam_warned_not_held_rate": 0.115385,
+      "catch_rate_ci95": [
+        0.7388,
+        0.8618
+      ],
+      "false_alarm_rate_ci95": [
+        0.0794,
+        0.1824
+      ],
+      "fail_closed": 0,
+      "scams_delivered_clean": 12,
+      "p50_ms": 2.7,
+      "p95_ms": 5.58,
+      "judge_share": 0.150641,
+      "paths": {
+        "judges": 47,
+        "model": 30,
+        "rule": 235
+      },
+      "judge_reply_unusable": 0,
+      "by_group": {
+        "category:guest_message": {
+          "n": 17,
+          "held": 5,
+          "warned": 3,
+          "clean": 9
+        },
+        "category:legit_contact": {
+          "n": 25,
+          "held": 4,
+          "warned": 7,
+          "clean": 14
+        },
+        "category:legit_logistics": {
+          "n": 15,
+          "held": 0,
+          "warned": 1,
+          "clean": 14
+        },
+        "category:legit_payment": {
+          "n": 80,
+          "held": 15,
+          "warned": 5,
+          "clean": 60
+        },
+        "category:legit_template": {
+          "n": 9,
+          "held": 0,
+          "warned": 0,
+          "clean": 9
+        },
+        "category:multilingual_legit": {
+          "n": 19,
+          "held": 0,
+          "warned": 0,
+          "clean": 19
+        },
+        "category:multilingual_scam": {
+          "n": 70,
+          "held": 45,
+          "warned": 14,
+          "clean": 11
+        },
+        "category:obfuscated": {
+          "n": 10,
+          "held": 10,
+          "warned": 0,
+          "clean": 0
+        },
+        "category:reported_pattern": {
+          "n": 45,
+          "held": 45,
+          "warned": 0,
+          "clean": 0
+        },
+        "category:reported_wording": {
+          "n": 22,
+          "held": 21,
+          "warned": 1,
+          "clean": 0
+        },
+        "lang:en|label:0": {
+          "n": 85,
+          "held": 15,
+          "warned": 7,
+          "clean": 63
+        },
+        "lang:en|label:1": {
+          "n": 82,
+          "held": 78,
+          "warned": 3,
+          "clean": 1
+        },
+        "lang:non_en|label:0": {
+          "n": 71,
+          "held": 4,
+          "warned": 6,
+          "clean": 61
+        },
+        "lang:non_en|label:1": {
+          "n": 74,
+          "held": 48,
+          "warned": 15,
+          "clean": 11
+        }
+      }
+    },
+    "today_platform_flow": {
+      "tp": 129,
+      "fn": 27,
+      "fp": 22,
+      "tn": 134,
+      "catch_rate": 0.826923,
+      "false_alarm_rate": 0.141026,
+      "precision": 0.854305,
+      "f1": 0.840391,
+      "legit_warned_rate": 0.089744,
+      "scam_warned_not_held_rate": 0.108974,
+      "catch_rate_ci95": [
+        0.7599,
+        0.8782
+      ],
+      "false_alarm_rate_ci95": [
+        0.095,
+        0.2043
+      ],
+      "fail_closed": 0,
+      "scams_delivered_clean": 10,
+      "p50_ms": 2.77,
+      "p95_ms": 5.76,
+      "judge_share": 0.128205,
+      "paths": {
+        "judges": 40,
+        "model": 46,
+        "rule": 226
+      },
+      "judge_reply_unusable": 0,
+      "by_group": {
+        "category:guest_message": {
+          "n": 17,
+          "held": 6,
+          "warned": 2,
+          "clean": 9
+        },
+        "category:legit_contact": {
+          "n": 25,
+          "held": 6,
+          "warned": 6,
+          "clean": 13
+        },
+        "category:legit_logistics": {
+          "n": 15,
+          "held": 0,
+          "warned": 1,
+          "clean": 14
+        },
+        "category:legit_payment": {
+          "n": 80,
+          "held": 16,
+          "warned": 6,
+          "clean": 58
+        },
+        "category:legit_template": {
+          "n": 9,
+          "held": 0,
+          "warned": 0,
+          "clean": 9
+        },
+        "category:multilingual_legit": {
+          "n": 19,
+          "held": 0,
+          "warned": 1,
+          "clean": 18
+        },
+        "category:multilingual_scam": {
+          "n": 70,
+          "held": 46,
+          "warned": 15,
+          "clean": 9
+        },
+        "category:obfuscated": {
+          "n": 10,
+          "held": 10,
+          "warned": 0,
+          "clean": 0
+        },
+        "category:reported_pattern": {
+          "n": 45,
+          "held": 45,
+          "warned": 0,
+          "clean": 0
+        },
+        "category:reported_wording": {
+          "n": 22,
+          "held": 22,
+          "warned": 0,
+          "clean": 0
+        },
+        "lang:en|label:0": {
+          "n": 85,
+          "held": 16,
+          "warned": 8,
+          "clean": 61
+        },
+        "lang:en|label:1": {
+          "n": 82,
+          "held": 79,
+          "warned": 2,
+          "clean": 1
+        },
+        "lang:non_en|label:0": {
+          "n": 71,
+          "held": 6,
+          "warned": 6,
+          "clean": 59
+        },
+        "lang:non_en|label:1": {
+          "n": 74,
+          "held": 50,
+          "warned": 15,
+          "clean": 9
+        }
+      }
+    },
+    "today_route_high": {
+      "tp": 119,
+      "fn": 37,
+      "fp": 19,
+      "tn": 137,
+      "catch_rate": 0.762821,
+      "false_alarm_rate": 0.121795,
+      "precision": 0.862319,
+      "f1": 0.809524,
+      "legit_warned_rate": 0.102564,
+      "scam_warned_not_held_rate": 0.173077,
+      "catch_rate_ci95": [
+        0.6903,
+        0.8227
+      ],
+      "false_alarm_rate_ci95": [
+        0.0794,
+        0.1824
+      ],
+      "fail_closed": 0,
+      "scams_delivered_clean": 10,
+      "p50_ms": 2.67,
+      "p95_ms": 4.63,
+      "judge_share": 0.269231,
+      "paths": {
+        "judges": 84,
+        "rule": 228
+      },
+      "judge_reply_unusable": 0,
+      "by_group": {
+        "category:guest_message": {
+          "n": 17,
+          "held": 4,
+          "warned": 4,
+          "clean": 9
+        },
+        "category:legit_contact": {
+          "n": 25,
+          "held": 4,
+          "warned": 8,
+          "clean": 13
+        },
+        "category:legit_logistics": {
+          "n": 15,
+          "held": 0,
+          "warned": 1,
+          "clean": 14
+        },
+        "category:legit_payment": {
+          "n": 80,
+          "held": 15,
+          "warned": 6,
+          "clean": 59
+        },
+        "category:legit_template": {
+          "n": 9,
+          "held": 0,
+          "warned": 0,
+          "clean": 9
+        },
+        "category:multilingual_legit": {
+          "n": 19,
+          "held": 0,
+          "warned": 1,
+          "clean": 18
+        },
+        "category:multilingual_scam": {
+          "n": 70,
+          "held": 41,
+          "warned": 20,
+          "clean": 9
+        },
+        "category:obfuscated": {
+          "n": 10,
+          "held": 10,
+          "warned": 0,
+          "clean": 0
+        },
+        "category:reported_pattern": {
+          "n": 45,
+          "held": 43,
+          "warned": 2,
+          "clean": 0
+        },
+        "category:reported_wording": {
+          "n": 22,
+          "held": 21,
+          "warned": 1,
+          "clean": 0
+        },
+        "lang:en|label:0": {
+          "n": 85,
+          "held": 15,
+          "warned": 8,
+          "clean": 62
+        },
+        "lang:en|label:1": {
+          "n": 82,
+          "held": 76,
+          "warned": 5,
+          "clean": 1
+        },
+        "lang:non_en|label:0": {
+          "n": 71,
+          "held": 4,
+          "warned": 8,
+          "clean": 59
+        },
+        "lang:non_en|label:1": {
+          "n": 74,
+          "held": 43,
+          "warned": 22,
+          "clean": 9
+        }
+      }
+    },
+    "tfidf_ctx": {
+      "tp": 135,
+      "fn": 21,
+      "fp": 26,
+      "tn": 130,
+      "catch_rate": 0.865385,
+      "false_alarm_rate": 0.166667,
+      "precision": 0.838509,
+      "f1": 0.851735,
+      "legit_warned_rate": 0.115385,
+      "scam_warned_not_held_rate": 0.089744,
+      "catch_rate_ci95": [
+        0.803,
+        0.9102
+      ],
+      "false_alarm_rate_ci95": [
+        0.1163,
+        0.233
+      ],
+      "fail_closed": 0,
+      "scams_delivered_clean": 7,
+      "p50_ms": 2.87,
+      "p95_ms": 5.85,
+      "judge_share": 0.128205,
+      "paths": {
+        "judges": 40,
+        "model": 52,
+        "rule": 220
+      },
+      "judge_reply_unusable": 0,
+      "by_group": {
+        "category:guest_message": {
+          "n": 17,
+          "held": 8,
+          "warned": 1,
+          "clean": 8
+        },
+        "category:legit_contact": {
+          "n": 25,
+          "held": 11,
+          "warned": 11,
+          "clean": 3
+        },
+        "category:legit_logistics": {
+          "n": 15,
+          "held": 0,
+          "warned": 1,
+          "clean": 14
+        },
+        "category:legit_payment": {
+          "n": 80,
+          "held": 15,
+          "warned": 5,
+          "clean": 60
+        },
+        "category:legit_template": {
+          "n": 9,
+          "held": 0,
+          "warned": 0,
+          "clean": 9
+        },
+        "category:multilingual_legit": {
+          "n": 19,
+          "held": 0,
+          "warned": 0,
+          "clean": 19
+        },
+        "category:multilingual_scam": {
+          "n": 70,
+          "held": 50,
+          "warned": 14,
+          "clean": 6
+        },
+        "category:obfuscated": {
+          "n": 10,
+          "held": 10,
+          "warned": 0,
+          "clean": 0
+        },
+        "category:reported_pattern": {
+          "n": 45,
+          "held": 45,
+          "warned": 0,
+          "clean": 0
+        },
+        "category:reported_wording": {
+          "n": 22,
+          "held": 22,
+          "warned": 0,
+          "clean": 0
+        },
+        "lang:en|label:0": {
+          "n": 85,
+          "held": 18,
+          "warned": 9,
+          "clean": 58
+        },
+        "lang:en|label:1": {
+          "n": 82,
+          "held": 81,
+          "warned": 0,
+          "clean": 1
+        },
+        "lang:non_en|label:0": {
+          "n": 71,
+          "held": 8,
+          "warned": 9,
+          "clean": 54
+        },
+        "lang:non_en|label:1": {
+          "n": 74,
+          "held": 54,
+          "warned": 14,
+          "clean": 6
+        }
+      }
+    },
+    "encoder_ctx": {
+      "tp": 132,
+      "fn": 24,
+      "fp": 24,
+      "tn": 132,
+      "catch_rate": 0.846154,
+      "false_alarm_rate": 0.153846,
+      "precision": 0.846154,
+      "f1": 0.846154,
+      "legit_warned_rate": 0.108974,
+      "scam_warned_not_held_rate": 0.115385,
+      "catch_rate_ci95": [
+        0.7813,
+        0.8944
+      ],
+      "false_alarm_rate_ci95": [
+        0.1056,
+        0.2187
+      ],
+      "fail_closed": 0,
+      "scams_delivered_clean": 6,
+      "p50_ms": 14.22,
+      "p95_ms": 21.93,
+      "judge_share": 0.150641,
+      "paths": {
+        "judges": 47,
+        "model": 43,
+        "rule": 222
+      },
+      "judge_reply_unusable": 0,
+      "by_group": {
+        "category:guest_message": {
+          "n": 17,
+          "held": 7,
+          "warned": 3,
+          "clean": 7
+        },
+        "category:legit_contact": {
+          "n": 25,
+          "held": 9,
+          "warned": 9,
+          "clean": 7
+        },
+        "category:legit_logistics": {
+          "n": 15,
+          "held": 0,
+          "warned": 1,
+          "clean": 14
+        },
+        "category:legit_payment": {
+          "n": 80,
+          "held": 15,
+          "warned": 5,
+          "clean": 60
+        },
+        "category:legit_template": {
+          "n": 9,
+          "held": 0,
+          "warned": 0,
+          "clean": 9
+        },
+        "category:multilingual_legit": {
+          "n": 19,
+          "held": 0,
+          "warned": 0,
+          "clean": 19
+        },
+        "category:multilingual_scam": {
+          "n": 70,
+          "held": 50,
+          "warned": 16,
+          "clean": 4
+        },
+        "category:obfuscated": {
+          "n": 10,
+          "held": 10,
+          "warned": 0,
+          "clean": 0
+        },
+        "category:reported_pattern": {
+          "n": 45,
+          "held": 44,
+          "warned": 1,
+          "clean": 0
+        },
+        "category:reported_wording": {
+          "n": 22,
+          "held": 21,
+          "warned": 0,
+          "clean": 1
+        },
+        "lang:en|label:0": {
+          "n": 85,
+          "held": 17,
+          "warned": 11,
+          "clean": 57
+        },
+        "lang:en|label:1": {
+          "n": 82,
+          "held": 78,
+          "warned": 2,
+          "clean": 2
+        },
+        "lang:non_en|label:0": {
+          "n": 71,
+          "held": 7,
+          "warned": 6,
+          "clean": 58
+        },
+        "lang:non_en|label:1": {
+          "n": 74,
+          "held": 54,
+          "warned": 16,
+          "clean": 4
+        }
+      }
+    },
+    "candidate": {
+      "tp": 123,
+      "fn": 33,
+      "fp": 23,
+      "tn": 133,
+      "catch_rate": 0.788462,
+      "false_alarm_rate": 0.147436,
+      "precision": 0.842466,
+      "f1": 0.81457,
+      "legit_warned_rate": 0.115385,
+      "scam_warned_not_held_rate": 0.173077,
+      "catch_rate_ci95": [
+        0.7178,
+        0.8452
+      ],
+      "false_alarm_rate_ci95": [
+        0.1003,
+        0.2115
+      ],
+      "fail_closed": 0,
+      "scams_delivered_clean": 6,
+      "p50_ms": 14.14,
+      "p95_ms": 21.43,
+      "judge_share": 0.291667,
+      "paths": {
+        "judges": 91,
+        "model": 1,
+        "rule": 220
+      },
+      "judge_reply_unusable": 0,
+      "by_group": {
+        "category:guest_message": {
+          "n": 17,
+          "held": 4,
+          "warned": 6,
+          "clean": 7
+        },
+        "category:legit_contact": {
+          "n": 25,
+          "held": 8,
+          "warned": 10,
+          "clean": 7
+        },
+        "category:legit_logistics": {
+          "n": 15,
+          "held": 0,
+          "warned": 1,
+          "clean": 14
+        },
+        "category:legit_payment": {
+          "n": 80,
+          "held": 15,
+          "warned": 5,
+          "clean": 60
+        },
+        "category:legit_template": {
+          "n": 9,
+          "held": 0,
+          "warned": 0,
+          "clean": 9
+        },
+        "category:multilingual_legit": {
+          "n": 19,
+          "held": 0,
+          "warned": 0,
+          "clean": 19
+        },
+        "category:multilingual_scam": {
+          "n": 70,
+          "held": 46,
+          "warned": 20,
+          "clean": 4
+        },
+        "category:obfuscated": {
+          "n": 10,
+          "held": 10,
+          "warned": 0,
+          "clean": 0
+        },
+        "category:reported_pattern": {
+          "n": 45,
+          "held": 43,
+          "warned": 2,
+          "clean": 0
+        },
+        "category:reported_wording": {
+          "n": 22,
+          "held": 20,
+          "warned": 1,
+          "clean": 1
+        },
+        "lang:en|label:0": {
+          "n": 85,
+          "held": 16,
+          "warned": 12,
+          "clean": 57
+        },
+        "lang:en|label:1": {
+          "n": 82,
+          "held": 75,
+          "warned": 5,
+          "clean": 2
+        },
+        "lang:non_en|label:0": {
+          "n": 71,
+          "held": 7,
+          "warned": 6,
+          "clean": 58
+        },
+        "lang:non_en|label:1": {
+          "n": 74,
+          "held": 48,
+          "warned": 22,
+          "clean": 4
+        }
+      }
+    },
+    "candidate_judges_down": {
+      "tp": 127,
+      "fn": 29,
+      "fp": 18,
+      "tn": 138,
+      "catch_rate": 0.814103,
+      "false_alarm_rate": 0.115385,
+      "precision": 0.875862,
+      "f1": 0.843854,
+      "legit_warned_rate": 0.166667,
+      "scam_warned_not_held_rate": 0.153846,
+      "catch_rate_ci95": [
+        0.7458,
+        0.8673
+      ],
+      "false_alarm_rate_ci95": [
+        0.0742,
+        0.175
+      ],
+      "fail_closed": 0,
+      "scams_delivered_clean": 5,
+      "p50_ms": 13.77,
+      "p95_ms": 21.16,
+      "judge_share": 0.291667,
+      "paths": {
+        "degraded": 91,
+        "model": 1,
+        "rule": 220
+      },
+      "judge_reply_unusable": 0,
+      "by_group": {
+        "category:guest_message": {
+          "n": 17,
+          "held": 6,
+          "warned": 4,
+          "clean": 7
+        },
+        "category:legit_contact": {
+          "n": 25,
+          "held": 6,
+          "warned": 13,
+          "clean": 6
+        },
+        "category:legit_logistics": {
+          "n": 15,
+          "held": 0,
+          "warned": 1,
+          "clean": 14
+        },
+        "category:legit_payment": {
+          "n": 80,
+          "held": 12,
+          "warned": 10,
+          "clean": 58
+        },
+        "category:legit_template": {
+          "n": 9,
+          "held": 0,
+          "warned": 0,
+          "clean": 9
+        },
+        "category:multilingual_legit": {
+          "n": 19,
+          "held": 0,
+          "warned": 0,
+          "clean": 19
+        },
+        "category:multilingual_scam": {
+          "n": 70,
+          "held": 48,
+          "warned": 18,
+          "clean": 4
+        },
+        "category:obfuscated": {
+          "n": 10,
+          "held": 9,
+          "warned": 1,
+          "clean": 0
+        },
+        "category:reported_pattern": {
+          "n": 45,
+          "held": 43,
+          "warned": 2,
+          "clean": 0
+        },
+        "category:reported_wording": {
+          "n": 22,
+          "held": 21,
+          "warned": 1,
+          "clean": 0
+        },
+        "lang:en|label:0": {
+          "n": 85,
+          "held": 14,
+          "warned": 17,
+          "clean": 54
+        },
+        "lang:en|label:1": {
+          "n": 82,
+          "held": 75,
+          "warned": 6,
+          "clean": 1
+        },
+        "lang:non_en|label:0": {
+          "n": 71,
+          "held": 4,
+          "warned": 9,
+          "clean": 58
+        },
+        "lang:non_en|label:1": {
+          "n": 74,
+          "held": 52,
+          "warned": 18,
+          "clean": 4
+        }
+      }
+    },
+    "baseline_classifier_only": {
+      "tp": 131,
+      "fn": 25,
+      "fp": 26,
+      "tn": 130,
+      "catch_rate": 0.839744,
+      "false_alarm_rate": 0.166667,
+      "precision": 0.834395,
+      "f1": 0.837061,
+      "catch_rate_ci95": [
+        0.7741,
+        0.889
+      ],
+      "false_alarm_rate_ci95": [
+        0.1163,
+        0.233
+      ]
+    },
+    "encoder_classifier_only": {
+      "tp": 150,
+      "fn": 6,
+      "fp": 65,
+      "tn": 91,
+      "catch_rate": 0.961538,
+      "false_alarm_rate": 0.416667,
+      "precision": 0.697674,
+      "f1": 0.808625,
+      "catch_rate_ci95": [
+        0.9186,
+        0.9823
+      ],
+      "false_alarm_rate_ci95": [
+        0.3422,
+        0.4951
+      ]
+    },
+    "candidate_real_judges": {
+      "tp": 148,
+      "fn": 8,
+      "fp": 16,
+      "tn": 140,
+      "catch_rate": 0.948718,
+      "false_alarm_rate": 0.102564,
+      "precision": 0.902439,
+      "f1": 0.925,
+      "legit_warned_rate": 0.051282,
+      "scam_warned_not_held_rate": 0.019231,
+      "catch_rate_ci95": [
+        0.9021,
+        0.9738
+      ],
+      "false_alarm_rate_ci95": [
+        0.0641,
+        0.1601
+      ],
+      "fail_closed": 0,
+      "scams_delivered_clean": 5,
+      "p50_ms": 29.03,
+      "p95_ms": 40708.5,
+      "judge_share": 0.291667,
+      "paths": {
+        "degraded": 18,
+        "judges": 73,
+        "model": 1,
+        "rule": 220
+      },
+      "judge_reply_unusable": 4,
+      "by_group": {
+        "category:guest_message": {
+          "n": 17,
+          "held": 8,
+          "warned": 0,
+          "clean": 9
+        },
+        "category:legit_contact": {
+          "n": 25,
+          "held": 4,
+          "warned": 1,
+          "clean": 20
+        },
+        "category:legit_logistics": {
+          "n": 15,
+          "held": 0,
+          "warned": 1,
+          "clean": 14
+        },
+        "category:legit_payment": {
+          "n": 80,
+          "held": 12,
+          "warned": 6,
+          "clean": 62
+        },
+        "category:legit_template": {
+          "n": 9,
+          "held": 0,
+          "warned": 0,
+          "clean": 9
+        },
+        "category:multilingual_legit": {
+          "n": 19,
+          "held": 0,
+          "warned": 0,
+          "clean": 19
+        },
+        "category:multilingual_scam": {
+          "n": 70,
+          "held": 64,
+          "warned": 2,
+          "clean": 4
+        },
+        "category:obfuscated": {
+          "n": 10,
+          "held": 10,
+          "warned": 0,
+          "clean": 0
+        },
+        "category:reported_pattern": {
+          "n": 45,
+          "held": 44,
+          "warned": 1,
+          "clean": 0
+        },
+        "category:reported_wording": {
+          "n": 22,
+          "held": 22,
+          "warned": 0,
+          "clean": 0
+        },
+        "lang:en|label:0": {
+          "n": 85,
+          "held": 13,
+          "warned": 5,
+          "clean": 67
+        },
+        "lang:en|label:1": {
+          "n": 82,
+          "held": 80,
+          "warned": 1,
+          "clean": 1
+        },
+        "lang:non_en|label:0": {
+          "n": 71,
+          "held": 3,
+          "warned": 3,
+          "clean": 65
+        },
+        "lang:non_en|label:1": {
+          "n": 74,
+          "held": 68,
+          "warned": 2,
+          "clean": 4
+        }
+      }
+    }
+  },
+  "paired_tests": {
+    "today_recalibrated_vs_baseline_today": {
+      "scams_caught": {
+        "only_first": 0,
+        "only_second": 3,
+        "p_value": 0.25
+      },
+      "legit_held": {
+        "only_first": 0,
+        "only_second": 3,
+        "p_value": 0.25
+      }
+    },
+    "today_platform_flow_vs_baseline_today": {
+      "scams_caught": {
+        "only_first": 0,
+        "only_second": 0,
+        "p_value": 1.0
+      },
+      "legit_held": {
+        "only_first": 0,
+        "only_second": 0,
+        "p_value": 1.0
+      }
+    },
+    "today_route_high_vs_baseline_today": {
+      "scams_caught": {
+        "only_first": 0,
+        "only_second": 10,
+        "p_value": 0.00195
+      },
+      "legit_held": {
+        "only_first": 0,
+        "only_second": 3,
+        "p_value": 0.25
+      }
+    },
+    "tfidf_ctx_vs_baseline_today": {
+      "scams_caught": {
+        "only_first": 6,
+        "only_second": 0,
+        "p_value": 0.03125
+      },
+      "legit_held": {
+        "only_first": 5,
+        "only_second": 1,
+        "p_value": 0.21875
+      }
+    },
+    "encoder_ctx_vs_baseline_today": {
+      "scams_caught": {
+        "only_first": 5,
+        "only_second": 2,
+        "p_value": 0.45312
+      },
+      "legit_held": {
+        "only_first": 4,
+        "only_second": 2,
+        "p_value": 0.6875
+      }
+    },
+    "candidate_vs_baseline_today": {
+      "scams_caught": {
+        "only_first": 3,
+        "only_second": 9,
+        "p_value": 0.146,
+        "p_value_holm": 0.292
+      },
+      "legit_held": {
+        "only_first": 3,
+        "only_second": 2,
+        "p_value": 1.0,
+        "p_value_holm": 1.0
+      }
+    },
+    "candidate_judges_down_vs_baseline_today": {
+      "scams_caught": {
+        "only_first": 5,
+        "only_second": 7,
+        "p_value": 0.77441
+      },
+      "legit_held": {
+        "only_first": 2,
+        "only_second": 6,
+        "p_value": 0.28906
+      }
+    },
+    "candidate_real_judges_vs_baseline_today": {
+      "scams_caught": {
+        "only_first": 20,
+        "only_second": 1,
+        "p_value": 2e-05
+      },
+      "legit_held": {
+        "only_first": 1,
+        "only_second": 7,
+        "p_value": 0.07031
+      }
+    }
+  },
+  "differences_and_errors": [
+    {
+      "id": "v3-006",
+      "label": 1,
+      "category": "guest_message",
+      "lang": "en",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "OBFUSCATED_TEXT",
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "OBFUSCATED_TEXT",
+          "JUDGES_LEGIT"
+        ]
+      ],
+      "text": "I am very disappointed with my stay. There were bugs in the bed and the staff was rude. I have taken photos and videos as proof, you can see them here: https://we.tl/t-k8Hq2Lz9Pw . If you do not respond within 24 hours I will publish a negative review everywhere."
+    },
+    {
+      "id": "v3-010",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "zh",
+      "candidate": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "baseline_today": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "text": "您好！为保证您的房间，请扫描下方二维码通过微信支付首晚房费¥580，付款后请把截图发给我们。未付款的订单将于今晚释放。"
+    },
+    {
+      "id": "v3-014",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "CARD_DATA_REQUEST"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "CARD_DATA_REQUEST"
+        ]
+      ],
+      "text": "Dear guest, we were unable to charge the card provided for your reservation (the bank declined it). Could you please update your card details in your Booking.com reservation (Manage booking > Payment details) within the next 24 hours? Please do not send card numbers in this chat. Many thanks."
+    },
+    {
+      "id": "v3-017",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "pl",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "text": "Dzień dobry! W celu potwierdzenia rezerwacji prosimy o przesłanie zaliczki 200 zł BLIKIEM na numer telefonu 512 448 903 (właściciel obiektu). Po wpłacie prześlemy potwierdzenie."
+    },
+    {
+      "id": "v3-023",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "el",
+      "candidate": [
+        "hold",
+        "judges",
+        [
+          "JUDGES_SCAM"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "Ευχαριστούμε, σημειώσαμε την ώρα άφιξης. Λόγω αναβάθμισης του συστήματος πληρωμών, παρακαλούμε επικοινωνήστε στο WhatsApp +30 697 554 1029 για να ολοκληρώσετε την εγγύηση της κάρτας."
+    },
+    {
+      "id": "v3-044",
+      "label": 1,
+      "category": "guest_message",
+      "lang": "de",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "OBFUSCATED_TEXT",
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "OBFUSCATED_TEXT",
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "Guten Tag, ich bin mit meinem Aufenthalt sehr unzufrieden: Schimmel im Bad und schmutzige Bettwäsche. Ich habe Fotos und ein Video gemacht, die Datei ist zu groß für den Chat, bitte hier herunterladen: https://dateien-teilen.net/d/beschwerde_fotos.zip . Ich erwarte eine Antwort innerhalb von 24 Stunden."
+    },
+    {
+      "id": "v3-046",
+      "label": 0,
+      "category": "legit_contact",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "OFF_PLATFORM_CONTACT"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "OFF_PLATFORM_CONTACT"
+        ]
+      ],
+      "text": "Welcome to Casa Limon! On the day of arrival our manager Javier will contact you on WhatsApp from +34 622 418 093 to agree the check-in time. Nothing needs to be paid to him; the balance is paid by card at the apartment."
+    },
+    {
+      "id": "v3-058",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "de",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "text": "Liebe Gäste, bitte scannen Sie den QR-Code im Anhang und schließen Sie die Online-Vorregistrierung inkl. Kartenbestätigung ab. Ohne diesen Schritt kann der Self-Check-in leider nicht freigeschaltet werden."
+    },
+    {
+      "id": "v3-059",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "el",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "Αγαπητέ επισκέπτη, δεν ήταν δυνατή η επαλήθευση της κάρτας σας. Παρακαλούμε επιβεβαιώστε τα στοιχεία της εντός 24 ωρών μέσω του παρακάτω συνδέσμου, διαφορετικά η κράτηση θα ακυρωθεί: https://epivevaiosi-kratisis.gr-stay.com/k/7712"
+    },
+    {
+      "id": "v3-061",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "id",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "Selamat siang Bapak/Ibu, untuk konfirmasi kamar mohon transfer DP Rp 750.000 ke rekening BCA 4210 8837 21 a.n. Rina Wulandari, lalu kirim bukti transfernya di sini. Jika tidak ada konfirmasi dalam 3 jam, booking otomatis dibatalkan."
+    },
+    {
+      "id": "v3-062",
+      "label": 1,
+      "category": "reported_pattern",
+      "lang": "en",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "Hi again, I understand you already paid, but the transaction was declined on our side by the bank's fraud filter. It happens a lot this season. Please make the payment once more through this link and we will refund the first one automatically: https://pay-again-refund.com/r/7712"
+    },
+    {
+      "id": "v3-065",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "id",
+      "candidate": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "baseline_today": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "text": "Baik kak, untuk early check-in bisa. Biaya Rp 200.000 bisa dibayar duluan via DANA ke 0812 4471 9902 ya kak, supaya kamarnya kami siapkan lebih awal. Terima kasih 🙏"
+    },
+    {
+      "id": "v3-071",
+      "label": 0,
+      "category": "legit_contact",
+      "lang": "pt",
+      "candidate": [
+        "hold",
+        "judges",
+        [
+          "JUDGES_SCAM"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "Oi! Sou a Juliana, anfitriã do apartamento. No dia da chegada me manda uma mensagem no WhatsApp (11) 98734-1120 quando estiver a caminho, que eu te encontro na portaria para entregar as chaves. O pagamento é feito na entrada."
+    },
+    {
+      "id": "v3-074",
+      "label": 0,
+      "category": "legit_contact",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "judges",
+        [
+          "JUDGES_SCAM"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "Sure! The easiest way to coordinate the key handover is WhatsApp: +351 913 870 226 (Rita, the host's sister). Send her a message when you leave the airport."
+    },
+    {
+      "id": "v3-078",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "CARD_DATA_REQUEST"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "CARD_DATA_REQUEST"
+        ]
+      ],
+      "text": "Dear guest, the card on your reservation has expired (expiry date 08/24). To keep the booking guaranteed, please add a valid card through your Booking.com account. You will receive an email from Booking.com with a button to update it. We never ask for card details by message, email or phone."
+    },
+    {
+      "id": "v3-079",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "vi",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "Chào anh/chị, để giữ phòng vui lòng chuyển khoản cọc 500.000đ vào tài khoản Vietcombank 0071 0042 18 336, chủ TK Nguyễn Văn H., hoặc qua MoMo 0903 412 778. Gửi ảnh chụp giao dịch tại đây giúp em ạ."
+    },
+    {
+      "id": "v3-082",
+      "label": 0,
+      "category": "legit_contact",
+      "lang": "id",
+      "candidate": [
+        "hold",
+        "judges",
+        [
+          "JUDGES_SCAM"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "Siap kak, untuk jemputan bandara silakan hubungi driver kami Pak Made di WhatsApp +62 812 3871 4420. Biaya jemput Rp 250.000 dibayar di hotel saat check-in."
+    },
+    {
+      "id": "v3-086",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "vi",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "Kính gửi quý khách, thẻ tín dụng của quý khách chưa được xác minh. Vui lòng xác nhận lại trong vòng 12 giờ tại liên kết sau, nếu không đặt phòng sẽ bị hủy: https://xacnhan-datphong.com/vn/4471"
+    },
+    {
+      "id": "v3-097",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "ru",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "Добрый день. Оплата вашего невозвратного тарифа не прошла, деньги вернулись на карту. Чтобы сохранить бронирование, повторите оплату до 18:00 по ссылке https://oplata-povtor.com/ru/7710 . Первый платёж будет возвращён автоматически."
+    },
+    {
+      "id": "v3-104",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "ar",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "OBFUSCATED_TEXT",
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "OBFUSCATED_TEXT",
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "شكراً لتواصلكم. بخصوص الدفع، يرجى التواصل مع مدير الحجوزات مباشرة عبر واتساب على الرقم ‎+966 55 418 2207 لإتمام عملية التأكيد قبل الوصول."
+    },
+    {
+      "id": "v3-115",
+      "label": 0,
+      "category": "legit_contact",
+      "lang": "es",
+      "candidate": [
+        "hold",
+        "judges",
+        [
+          "JUDGES_SCAM"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "¡Bienvenidos a Casa Rural El Olivar! Para coordinar la entrega de llaves, el día de llegada podéis llamarnos o escribirnos por WhatsApp al 678 304 512 (Carmen). El pago se hace en la casa, en efectivo o con tarjeta."
+    },
+    {
+      "id": "v3-122",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "CARD_DATA_REQUEST"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "CARD_DATA_REQUEST"
+        ]
+      ],
+      "text": "Hello, please be aware that at check-in we place a pre-authorisation of €50 per night on a credit or debit card to cover incidentals (minibar, room service). This is not a charge. The hold is released at check-out, but depending on your bank it can take 5-10 working days to disappear from your statement."
+    },
+    {
+      "id": "v3-133",
+      "label": 1,
+      "category": "guest_message",
+      "lang": "en",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "OBFUSCATED_TEXT",
+          "JUDGES_LEGIT"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "OBFUSCATED_TEXT",
+          "JUDGES_LEGIT"
+        ]
+      ],
+      "text": "Thank you for answering so fast. Here are the photos of the passport and my check-in details so you can find it: https://drive-share-docs.com/f/passport_photos.zip . Please download and look, the password is 2024."
+    },
+    {
+      "id": "v3-135",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "OFF_PLATFORM_PAYMENT"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "OFF_PLATFORM_PAYMENT"
+        ]
+      ],
+      "text": "Dear Mr Okafor, thank you for choosing us for your conference. As requested, the invoice for the meeting room and coffee breaks (€1,240) will be sent by our accounting department from accounts@hotelparkview-leeds.co.uk. You can pay by bank transfer within 30 days of the event or by card at check-out, whichever suits your company."
+    },
+    {
+      "id": "v3-138",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "zh",
+      "candidate": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "baseline_today": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "text": "您好，我们是酒店前台。为方便沟通，请添加我们的Telegram：@hotel_cn_service ，客服会协助您完成订单确认和付款。"
+    },
+    {
+      "id": "v3-140",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "id",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "Tamu yang terhormat, verifikasi kartu kredit Anda gagal. Silakan konfirmasi ulang melalui tautan berikut dalam 24 jam agar reservasi tidak dibatalkan: https://konfirmasi-reservasi.id-stay.com/c/3310"
+    },
+    {
+      "id": "v3-143",
+      "label": 1,
+      "category": "guest_message",
+      "lang": "es",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "OBFUSCATED_TEXT",
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "OBFUSCATED_TEXT",
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "Hola, por motivos técnicos no puedo ver mi reserva en la app. ¿Podrían confirmarla ustedes desde este enlace? Ahí he puesto mis fechas: https://confirmacion-huesped.com/h/2290 . Gracias."
+    },
+    {
+      "id": "v3-145",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "it",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "deliver",
+        "judges",
+        [
+          "JUDGES_LEGIT"
+        ]
+      ],
+      "text": "Certo, la colazione è inclusa! Un'ultima cosa: poiché il POS della struttura è guasto, le chiediamo di versare la caparra di 80 € con ricarica PostePay sulla carta n. 5333 1712 0498 2261 intestata a G. Russo. Ci mandi la ricevuta qui."
+    },
+    {
+      "id": "v3-146",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "ko",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "text": "안녕하세요, 호텔 프런트입니다. 객실 확정을 위해 첫날 숙박비 128,000원을 아래 계좌로 입금 부탁드립니다. 국민은행 482901-04-117735 (예금주 김*진). 입금 후 캡처 보내주세요."
+    },
+    {
+      "id": "v3-149",
+      "label": 1,
+      "category": "reported_wording",
+      "lang": "en",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "Hello, before we can give you the address and the key collection details, an additional security deposit of €2,000 is required for the apartment. This will be returned after your stay. Payment details will follow in the next message."
+    },
+    {
+      "id": "v3-150",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "th",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "เรียนท่านผู้เข้าพัก เพื่อยืนยันการจอง กรุณาชำระมัดจำ 1,500 บาท ผ่านพร้อมเพย์ 089-417-2235 (ชื่อบัญชี สมชาย ก.) และส่งสลิปมาที่แชทนี้ภายใน 6 ชั่วโมง มิฉะนั้นการจองจะถูกยกเลิก"
+    },
+    {
+      "id": "v3-153",
+      "label": 1,
+      "category": "reported_pattern",
+      "lang": "en",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "OBFUSCATED_TEXT",
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "OBFUSCATED_TEXT",
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "Thank you for your question about the remaining balance. To make it easier for you, you can pay the balance online now instead of at check-in, through the link: https://balance-online-hotel.com/bal/2203 . Our reception will not accept cards this month due to a system upgrade."
+    },
+    {
+      "id": "v3-162",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "nl",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "text": "Geachte gast, de aanbetaling voor uw verblijf is mislukt. Wij verzoeken u het bedrag van € 95,- vandaag over te maken naar NL52 ABNA 0583 1297 41 t.n.v. Verhuurbeheer Kust, o.v.v. uw boekingsnummer."
+    },
+    {
+      "id": "v3-172",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "judges",
+        [
+          "PLATFORM_FLOW_MONEY_MENTION",
+          "JUDGES_SCAM"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "CARD_DATA_REQUEST"
+        ]
+      ],
+      "text": "Dear guest, we would like to reassure you: we will not charge your card before arrival. The card details are only a guarantee for the reservation. You pay the full amount at the property when you check in."
+    },
+    {
+      "id": "v3-178",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "judges",
+        [
+          "JUDGES_SCAM"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "Dear guest, your booking was made with a non-refundable rate, which Booking.com has charged on the booking date. If you see two transactions on your statement, one may be a temporary authorisation by your bank that will disappear in a few days. Please contact Booking.com customer service if it doesn't."
+    },
+    {
+      "id": "v3-198",
+      "label": 1,
+      "category": "reported_wording",
+      "lang": "en",
+      "candidate": [
+        "deliver",
+        "judges",
+        [
+          "JUDGES_LEGIT"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "Thank you for checking with us. We confirm the previous message was sent by us and the hostel takes full responsibility for it. It is not spam. Please complete the verification today so we can hold your bed, otherwise the system will release it."
+    },
+    {
+      "id": "v3-200",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL"
+        ]
+      ],
+      "text": "Hello and welcome! Just a heads-up so there are no surprises: Amsterdam tourist tax (12.5% of the room price) is charged at check-out together with the rest of your stay. You don't need to pay anything before you arrive."
+    },
+    {
+      "id": "v3-203",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "de",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "Sehr geehrter Gast, laut unseren Unterlagen erfolgt vor Ihrer Anreise ein Standard-Check Ihrer Kreditkarte. Bitte geben Sie Ihre Daten über den folgenden Link erneut ein, da die Buchung sonst verfällt: https://kartencheck-unterkunft.de-reserv.com/k/4410"
+    },
+    {
+      "id": "v3-205",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "ja",
+      "candidate": [
+        "hold",
+        "judges",
+        [
+          "JUDGES_SCAM"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "いつもご利用ありがとうございます。ご予約内容の確認のため、WhatsApp（+81 80-4127-3390）までご連絡ください。担当者よりお支払い方法についてご案内いたします。"
+    },
+    {
+      "id": "v3-217",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "CARD_DATA_REQUEST"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "CARD_DATA_REQUEST"
+        ]
+      ],
+      "text": "Hello, unfortunately the payment for your non-refundable reservation was declined by your bank. Booking.com should have sent you an email asking you to update your card. Please do this directly in the app or on the Booking.com website. If the card is not updated, the platform may cancel the reservation according to its policy. Let us know if you have any questions."
+    },
+    {
+      "id": "v3-218",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL"
+        ]
+      ],
+      "text": "No problem at all! We saw that you updated the card in the app, everything is fine now. Nothing will be charged before your arrival; you will pay at reception when you check in."
+    },
+    {
+      "id": "v3-222",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "ko",
+      "candidate": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "baseline_today": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "text": "네, 주차 가능합니다. 그리고 예약 관련 결제 안내는 카카오톡으로 드리고 있어요. 카카오톡 ID: hotel_rsv_desk 로 예약번호와 함께 메시지 주시면 됩니다."
+    },
+    {
+      "id": "v3-225",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "es",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "CARD_DATA_REQUEST"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "CARD_DATA_REQUEST"
+        ]
+      ],
+      "text": "Hola, le informamos de que no hemos podido validar la tarjeta asociada a su reserva. Por favor, actualícela directamente en la app de Booking.com, en «Gestionar reserva». Le recordamos que nunca le pediremos los datos de la tarjeta por este chat ni por teléfono. No se realizará ningún cargo antes de su llegada."
+    },
+    {
+      "id": "v3-231",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "ru",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "Спасибо, ранний заезд отметили. Ещё один момент: у нас обновилась платёжная система, поэтому всех гостей просим повторно привязать карту на странице https://novaya-oplata-otel.ru/k/2201 — иначе бронь может слететь."
+    },
+    {
+      "id": "v3-238",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "OFF_PLATFORM_PAYMENT"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "OFF_PLATFORM_PAYMENT"
+        ]
+      ],
+      "text": "Dear guest, please note we do not take any payment before arrival. If you ever receive a message asking you to pay via a link or bank transfer for this reservation, please do not pay and contact us by phone using the number on our official website."
+    },
+    {
+      "id": "v3-242",
+      "label": 0,
+      "category": "legit_contact",
+      "lang": "ar",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "OBFUSCATED_TEXT",
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "OBFUSCATED_TEXT",
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "بالتأكيد، سائق النقل من المطار سيكون بانتظاركم عند البوابة 3. رقم السائق للتواصل: ‎+971 50 312 7741. تُدفع رسوم النقل مع فاتورة الغرفة عند المغادرة."
+    },
+    {
+      "id": "v3-244",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "fr",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "OFF_PLATFORM_PAYMENT"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "OFF_PLATFORM_PAYMENT"
+        ]
+      ],
+      "text": "Bonjour Madame Girard, comme convenu, vous trouverez la facture pro forma pour le séminaire (18 chambres, 2 nuits). L'acompte de 30 % peut être réglé par virement selon les coordonnées indiquées sur la facture, ou par carte en appelant notre service réservations. Le solde sera réglé sur place."
+    },
+    {
+      "id": "v3-247",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "OFF_PLATFORM_PAYMENT"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "OFF_PLATFORM_PAYMENT"
+        ]
+      ],
+      "text": "Dear Ms Becker, thank you for your request. Please find attached the pro-forma invoice for the 12 rooms of your group (14-16 May). As agreed with your colleague Mr Hartmann, a 30% deposit can be paid by bank transfer using the details printed on the invoice, or by card over the phone with our reservations office. If you prefer to pay everything on arrival, that is also fine, just let us know."
+    },
+    {
+      "id": "v3-249",
+      "label": 0,
+      "category": "legit_contact",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "OFF_PLATFORM_CONTACT"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "OFF_PLATFORM_CONTACT"
+        ]
+      ],
+      "text": "Dear guest, our concierge team is available on WhatsApp (+31 6 4128 3307) for restaurant tips, taxi bookings and anything else you need during your stay. For questions about your reservation or payment, please use this chat or call reception."
+    },
+    {
+      "id": "v3-250",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "de",
+      "candidate": [
+        "hold",
+        "judges",
+        [
+          "PLATFORM_FLOW_MONEY_MENTION",
+          "JUDGES_SCAM"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL",
+          "CARD_DATA_REQUEST"
+        ]
+      ],
+      "text": "Guten Tag, Ihre hinterlegte Kreditkarte wurde von der Bank abgelehnt. Bitte aktualisieren Sie die Karte direkt in Ihrer Buchung bei Booking.com (App oder Website). Bitte senden Sie uns keine Kartendaten per Nachricht. Vor Ihrer Anreise wird nichts belastet."
+    },
+    {
+      "id": "v3-256",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "el",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "Καλησπέρα σας! Για την επιβεβαίωση της κράτησης απαιτείται προκαταβολή 120 € μέσω IRIS στο κινητό 694 218 3307 ή με κατάθεση στο GR16 0110 1250 0000 0001 2300 695. Στείλτε μας το αποδεικτικό εδώ."
+    },
+    {
+      "id": "v3-259",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "es",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "Hola, buenas tardes. Hemos detectado un problema con su reserva y necesitamos que actualice sus datos bancarios para evitar la cancelación. Tiene 24 horas: https://actualiza-datos-reserva.com/es/5520"
+    },
+    {
+      "id": "v3-266",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "th",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "เรียนลูกค้า ระบบไม่สามารถยืนยันบัตรเครดิตของท่านได้ กรุณายืนยันข้อมูลบัตรอีกครั้งที่ลิงก์นี้ภายใน 24 ชั่วโมง: https://yuenyan-hong.com/th/2210"
+    },
+    {
+      "id": "v3-268",
+      "label": 0,
+      "category": "legit_contact",
+      "lang": "tr",
+      "candidate": [
+        "hold",
+        "judges",
+        [
+          "JUDGES_SCAM"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "Transfer şoförümüz Mehmet Bey sizi karşılayacak, telefonu +90 533 204 61 19. Uçağınız gecikirse ona WhatsApp'tan yazabilirsiniz. Transfer ücreti otelde ödenir."
+    },
+    {
+      "id": "v3-273",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "it",
+      "candidate": [
+        "hold",
+        "judges",
+        [
+          "JUDGES_SCAM"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "Salve! Per velocizzare il check-in le chiediamo di scriverci su WhatsApp al +39 351 448 2017 indicando il numero di prenotazione. Le invieremo il modulo per la garanzia della carta."
+    },
+    {
+      "id": "v3-274",
+      "label": 0,
+      "category": "legit_contact",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "judges",
+        [
+          "JUDGES_SCAM"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "For the boat transfer to the island please contact the skipper directly on +30 694 512 3307 (WhatsApp or call) to agree the time. The transfer is included in your package."
+    },
+    {
+      "id": "v3-283",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "ko",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "고객님, 예약하신 카드 정보 확인 중 오류가 발생했습니다. 24시간 이내에 아래 링크에서 카드 정보를 다시 확인해 주시지 않으면 예약이 자동 취소됩니다. https://yeyak-hwagin.com/k/3381"
+    },
+    {
+      "id": "v3-285",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "en",
+      "candidate": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "rule",
+        [
+          "PAY_ASK_ON_PAY_AT_HOTEL"
+        ]
+      ],
+      "text": "Hi! No worries, you don't need to pay anything in advance. Your booking has free cancellation until 2 days before arrival and you pay at the hotel. See you on Saturday!"
+    },
+    {
+      "id": "v3-286",
+      "label": 1,
+      "category": "multilingual_scam",
+      "lang": "de",
+      "candidate": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "baseline_today": [
+        "warn",
+        "judges",
+        [
+          "JUDGES_UNSURE"
+        ]
+      ],
+      "text": "Guten Tag, die Anzahlung für Ihre Buchung konnte von der Plattform nicht eingezogen werden. Damit die Reservierung bestehen bleibt, zahlen Sie die Anzahlung bitte bis morgen 18 Uhr über diesen Link: https://anzahlung-sicher.com/a/2261"
+    },
+    {
+      "id": "v3-288",
+      "label": 0,
+      "category": "legit_payment",
+      "lang": "en",
+      "candidate": [
+        "deliver",
+        "judges",
+        [
+          "JUDGES_LEGIT"
+        ]
+      ],
+      "baseline_today": [
+        "hold",
+        "model",
+        [
+          "MODEL_HIGH_RISK"
+        ]
+      ],
+      "text": "Dear guest, a refundable damage deposit of €200 is required for this apartment. It is collected by Booking.com as part of your reservation and will be refunded automatically within 7 days after check-out, provided there is no damage."
+    },
+    {
+      "id": "v3-300",
+      "label": 1,
+      "category": "guest_message",
+      "lang": "en",
+      "candidate": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "baseline_today": [
+        "deliver",
+        "rule",
+        [
+          "NO_PAYMENT_ASK"
+        ]
+      ],
+      "text": "Hello, I stayed at your hotel last week and I think I left my passport in the room (room on the 3rd floor). It is very urgent because I fly home on Monday. Could you please check? I can send photos of it so you can recognise it."
+    }
+  ],
+  "run_conditions": {
+    "classifier_versions": {
+      "baseline_today": "tfidf-lr-1",
+      "today_recalibrated": "tfidf-lr-1",
+      "today_platform_flow": "tfidf-lr-1",
+      "today_route_high": "tfidf-lr-1",
+      "tfidf_ctx": "tfidf-ctx-1",
+      "encoder_ctx": "e5s-ctx-1",
+      "candidate": "e5s-ctx-1"
+    },
+    "judge_provider": "offline-deterministic",
+    "real_judges": null,
+    "real_judge_pacing": null,
+    "data_manifest_hash": "c0cc5d1b1f71ce5d",
+    "encoder_manifest": {
+      "repo": "Xenova/multilingual-e5-small",
+      "revision": "761b726dd34fb83930e26aab4e9ac3899aa1fa78",
+      "model": "onnx/model_quantized.onnx",
+      "tokenizer": "tokenizer.json",
+      "files": {
+        "onnx/model_quantized.onnx": "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193",
+        "tokenizer.json": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+      }
+    },
+    "seconds": 36.6
+  },
+  "added_arms": {
+    "candidate_real_judges": {
+      "generated": "2026-10-29 21:53:01",
+      "git_commit": "2ae841d6d698a3b935feed6244838b047d44f334"
+    }
+  }
+}
