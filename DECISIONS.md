@@ -419,6 +419,18 @@ untouched). Google's content filters are lowered to "block only high" because sc
 - Cost estimates use the configured provider's paid prices (Gemini 3.5 Flash-Lite: estimates from the pricing page,
   checked 2026-10-29); the report, which runs with no key, keeps the Anthropic estimate as before.
 
+### 45. Containment stays one click; guest-facing copy names no real platform
+When a session's takeover risk is critical, StayGuard acts on its own where a mistake is cheap: the session must step
+up with a passkey (`step_up_required`), and nothing it sends is delivered. Containment (log out every session at the
+property, rotate guest PINs, warn every guest the session read, freeze payout changes) is suggested but needs a person's
+click, because it is heavy and hard to undo: it also logs out the hotel's real staff and alarms hundreds of guests, and
+the login model is trained on synthetic sessions (Known limits). A manager on a new laptop abroad scores high too.
+- Chosen over: automatic containment at critical risk. A narrower automatic step (revoke only the one session that just
+  sent a blocked scam) is a reasonable next option; not built yet.
+- The guest banner and guest-check advice used to name a real platform ("Only pay inside the Booking.com app"). In an
+  independent project that reads as that company's own copy, so they now say "your booking platform"; a platform
+  deploying StayGuard would put its own name there. The demo's scam messages still name brands, because real scams do.
+
 ## Known limits
 - Dev and held-out v1 have the same author as the rules, and v1 was tuned on after its first run (#28). Held-out v2
   has a different author but is still small (148) and written, not collected. Real validation needs labelled
