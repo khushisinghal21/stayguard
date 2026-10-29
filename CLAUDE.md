@@ -25,11 +25,14 @@ A wrong "deliver" can cost a guest real money. These invariants must hold after 
 9. **No fabricated metrics.** Every number in README.md and DECISIONS.md comes from `eval/report.json` via
    `scripts/render_docs.py`. Every number in `eval/report.md` comes from `eval/evaluate.py`. Assumptions (prices,
    token counts) are labelled as estimates with a source.
-10. **The held-out set is never used for tuning.** `data/curated/heldout_eval.jsonl` must not inform rules, lexicons,
-    thresholds or training. Calibration uses the SMS calibration split and the dev set only. If a change was motivated by
-    a held-out result, record that in DECISIONS.md. Never regenerate `eval/heldout_first_look.json`.
-11. **Leakage.** Classifier training uses `train_seeds.jsonl` + the SMS train split only. The golden (dev) and held-out
-    sets and the SMS calibration/test splits are never trained on.
+10. **The blind set is never used for tuning.** Held-out v3 (`data/curated/heldout_v3.jsonl`) must not be read, and must
+    not inform rules, lexicons, thresholds, training or calibration, until its one run is frozen in
+    `eval/heldout_v3_first_look.json` (DECISIONS #43). v1 and v2 are spent (DECISIONS #28, #37) and retired: v1 into the
+    context models' training rows, v2 into their calibration rows. If a change was motivated by a held-out result,
+    record that in DECISIONS.md. Never regenerate any `eval/heldout*_first_look.json`.
+11. **Leakage.** The original classifier trains on `train_seeds.jsonl` + the SMS train split only; the context models
+    (`ctx_classifier.py`) add retired v1 and the feedback queue. Dev, v2, v3 and the SMS calibration/test splits are
+    never trained on. Tests enforce both.
 12. **Keep the "why" comments.** When you change code a comment explains, update the comment; never delete the reasoning.
 
 ## Commands

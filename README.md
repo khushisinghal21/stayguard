@@ -171,6 +171,35 @@ says which one is active.
 
 Development: see `CONTRIBUTING.md` (`make lint types test`). Agents: see `CLAUDE.md` for the invariants.
 
+## Pipeline changes waiting for their blind test (held-out v3)
+
+Five changes built after held-out v2, all **off by default** and **not yet measured**: none of their numbers exist
+until the one blind run on held-out v3 (`make eval-v3`), whatever it shows. Reasons and limits are in DECISIONS #38-#43.
+
+| Change | Switch | DECISIONS |
+|---|---|---|
+| Multilingual encoder (multilingual-e5-small, ONNX) + booking context as the language model | `STAYGUARD_CLASSIFIER=encoder_ctx` | #38, #39 |
+| TF-IDF + booking context (no download needed) | `STAYGUARD_CLASSIFIER=tfidf_ctx` | #39 |
+| Model-only holds go to the prosecutor/defender judges (still held if they are down) | `STAYGUARD_ROUTE_MODEL_HIGH_TO_JUDGES=1` | #39 |
+| Money mentions that only point to the platform's own app/reception are warned, not held | `STAYGUARD_PLATFORM_FLOW_WARN=1` | #40 |
+| Shadow mode (decisions returned with `enforced: false`) and a labelled feedback queue | `STAYGUARD_ENFORCE=0`, `POST /v1/messages/{id}/label` | #41 |
+| Network link checks: shortener destinations, domain age (RDAP), SSRF-safe | `STAYGUARD_NET_CHECKS=1` | #42 |
+
+The blind run, on a machine that can reach huggingface.co (it downloads the encoder weights once):
+
+```bash
+make install-encoder         # dev toolchain + onnxruntime/tokenizers, hash-pinned (requirements-encoder.lock)
+make encoder                 # fetch the encoder, train encoder_ctx, write eval/calibration_encoder_ctx.json
+git add eval/calibration_encoder_ctx.json && git commit -m "Calibrate the encoder model for the v3 run"
+make eval-v3                 # ONE blind run -> eval/heldout_v3_first_look.json (refuses a dirty tree)
+# optional, same commit, real judges: STAYGUARD_ANTHROPIC_API_KEY=... python -m eval.evaluate_v3 --add-arm candidate_real_judges
+```
+
+The primary comparison is fixed in advance: the candidate (encoder + context + platform-flow warning + routing)
+against today's system, on scams caught and legitimate messages held, paired exact McNemar, Holm-adjusted.
+Held-out v3 was written by a separate agent that never saw the code (`docs/HELDOUT_V3_BRIEF.md`) and has not been
+read by anyone working on StayGuard.
+
 ## The console (http://localhost:8000)
 
 - **Live attack** — replays a hijack against real upcoming bookings: normal staff message delivered, attacker logs
@@ -188,6 +217,7 @@ Development: see `CONTRIBUTING.md` (`make lint types test`). Agents: see `CLAUDE
 | Endpoint | Purpose |
 |---|---|
 | `POST /v1/messages/check` | Decide on a message: `deliver` / `warn` / `hold` / `block`, with reason codes, quoted evidence, path, trace, versions. `message_id` makes it idempotent. |
+| `POST /v1/messages/{id}/label` | A hotel, guest or analyst labels a stored message scam/legit (feedback queue, DECISIONS #41); never changes the decision. |
 | `POST /v1/sessions/score` | Score an extranet login/session for takeover risk; returns `step_up_required`. |
 | `POST /v1/sessions/{id}/reads` | The extranet reports which reservations a session opened (used by containment). |
 | `POST /v1/guest/verify` | Guest check by reservation number + PIN (public; rate-limited and locked after repeated wrong PINs). |
