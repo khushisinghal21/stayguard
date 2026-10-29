@@ -73,11 +73,18 @@ async function refreshStatus() {
   try {
     const s = await api("/healthz");
     const judge = s.judge_provider === "offline-deterministic" ? "AI judges: offline mode" : `AI judges: ${s.judge_provider}`;
-    const down = s.breaker !== "closed";
-    $("#status").replaceChildren(
-      h("span", {}, judge),
-      h("span", { class: down ? "down" : "" }, down ? "Judges unavailable, safe fallback on" : "Judges available"),
-      h("span", {}, `${Number(s.blocklist_size).toLocaleString()} live phishing domains`));
+    // The breaker state left the public /healthz in review round 2 (it told an attacker when the judges were down), so it
+    // is read from /v1/metrics, which needs the API key outside demo mode. Unknown state shows no pill rather than a
+    // false "unavailable" (the console showed that on every load until this fix).
+    let breaker = null;
+    try { breaker = (await api("/v1/metrics")).breaker; } catch { breaker = null; }
+    const pills = [h("span", {}, judge)];
+    if (breaker) {
+      const down = breaker !== "closed";
+      pills.push(h("span", { class: down ? "down" : "" }, down ? "Judges unavailable, safe fallback on" : "Judges available"));
+    }
+    pills.push(h("span", {}, `${Number(s.blocklist_size).toLocaleString()} live phishing domains`));
+    $("#status").replaceChildren(...pills);
   } catch { $("#status").replaceChildren(h("span", { class: "down" }, "API not reachable")); }
 }
 
