@@ -15,6 +15,7 @@ from typing import Any
 
 from . import config
 from .classifier import ScamClassifier
+from .ctx_classifier import make_classifier
 from .judges import INSTRUCTION, CircuitBreaker, Judge, JudgeReplyUnusable, JudgeUnavailable, OfflineJudge, make_judge
 from .links import LinkChecker
 from .signals import detect_language, extract, mask_pii
@@ -59,7 +60,21 @@ REASON_TEXT = {
     "RISKY_SESSION": "Sender's login looks unusual, so the decision was made one step stricter.",
     "SYSTEM_EXCEPTION_FAIL_CLOSED": "StayGuard hit an internal error, so the message is held for review rather than delivered.",
     "SESSION_TAKEOVER_SUSPECTED": "Sender's login looks taken over. Nothing goes out until the hotel re-confirms with a passkey.",
+    "PLATFORM_FLOW_MONEY_MENTION": "Mentions payment or a card, but only sends the guest to the platform's own app, account or "
+    "reception - delivered with a warning.",
 }
+
+
+@dataclass(frozen=True)
+class EngineOptions:
+    """Per-engine choices, so one process can run today's system and a candidate side by side (eval/evaluate_v3.py).
+    Defaults come from config, i.e. the environment."""
+
+    classifier: str = field(default_factory=lambda: config.CLASSIFIER)
+    model_low: float = field(default_factory=lambda: config.MODEL_LOW)
+    model_high: float = field(default_factory=lambda: config.MODEL_HIGH)
+    route_model_high_to_judges: bool = field(default_factory=lambda: config.ROUTE_MODEL_HIGH_TO_JUDGES)
+    platform_flow_warn: bool = field(default_factory=lambda: config.PLATFORM_FLOW_WARN)
 
 
 @dataclass
@@ -81,6 +96,7 @@ class Decision:
     trace: list[dict[str, Any]] = field(default_factory=list)
     latency_ms: float = 0.0
     llm_called: bool = False
+    versions: dict[str, Any] = field(default_factory=lambda: dict(VERSIONS))
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -102,7 +118,7 @@ class Decision:
             "trace": self.trace,
             "latency_ms": round(self.latency_ms, 2),
             "llm_called": self.llm_called,
-            "versions": VERSIONS,
+            "versions": self.versions,
         }
 
 
@@ -116,6 +132,12 @@ def judge_cost_estimate_usd(message: str = "x" * 200) -> float:
         total += (prompt_chars / 4) * config.LLM_PRICE_IN_PER_MTOK / 1e6
         total += config.JUDGE_OUTPUT_TOKENS * config.LLM_PRICE_OUT_PER_MTOK / 1e6
     return total
+
+
+def _net_checker() -> Any:
+    from .netcheck import NetChecker
+
+    return NetChecker()
 
 
 def _touches_money_or_links(asks_for_money: bool, links: list[Any], worst_link_score: float) -> bool:
@@ -176,9 +198,20 @@ class Metrics:
 
 
 class Engine:
-    def __init__(self, link_checker: LinkChecker | None = None, judge: Judge | None = None) -> None:
-        self.clf = ScamClassifier()
-        self.links = link_checker or LinkChecker()
+    def __init__(
+        self,
+        link_checker: LinkChecker | None = None,
+        judge: Judge | None = None,
+        options: EngineOptions | None = None,
+        clf: Any | None = None,
+    ) -> None:
+        self.opts = options or EngineOptions()
+        if not self.opts.model_low < self.opts.model_high:
+            raise ValueError("model_low must be below model_high")
+        # a configured model that cannot load stops start-up (fail closed); it never silently becomes another model
+        self.clf = clf if clf is not None else make_classifier(self.opts.classifier)
+        self.versions = {**VERSIONS, "classifier": self.clf.version, "options": self.option_tag()}
+        self.links = link_checker or LinkChecker(net=_net_checker() if config.NET_CHECKS else None)
         self.judge = judge or make_judge()
         self.breaker = CircuitBreaker()
         self.metrics = Metrics()
@@ -213,9 +246,19 @@ class Engine:
                 (time.perf_counter() - t0) * 1000,
                 False,
             )
+        d.versions = self.versions
         if record:
             self.metrics.record(d)
         return d
+
+    def option_tag(self) -> str:
+        o = self.opts
+        flags = [f"low={o.model_low:g}", f"high={o.model_high:g}"]
+        if o.route_model_high_to_judges:
+            flags.append("route_high")
+        if o.platform_flow_warn:
+            flags.append("platform_flow")
+        return ",".join(flags)
 
     def _check(self, text: str, ctx: dict[str, Any], t0: float, partial: dict[str, Any]) -> Decision:
         trace: list[dict[str, Any]] = partial["trace"]
@@ -245,7 +288,9 @@ class Engine:
         # a message with more distinct links than that is itself suspicious
         urls = list(dict.fromkeys(sig.urls))
         too_many_links = len(urls) > MAX_LINKS
-        lv = [self.links.check(u, set(ctx.get("property_domains", []))) for u in urls[:MAX_LINKS]]
+        # one network budget for all links of this message (only used when network checks are on, DECISIONS #42)
+        deadline = time.monotonic() + config.NET_BUDGET_S
+        lv = [self.links.check(u, set(ctx.get("property_domains", [])), deadline=deadline) for u in urls[:MAX_LINKS]]
         worst = max((v.score for v in lv), default=0.0)
         stage("links", s, checked=len(lv), worst=round(worst, 3))
 
@@ -288,7 +333,29 @@ class Engine:
             elif v.verdict == "suspicious":
                 escalate("hold" if (sig.money_ask or sig.soft_money_ask or sig.verify_lure) else "warn", "UNVERIFIED_LINK")
                 ev("link", [v.host])
-        if direction == "hotel_to_guest":
+        # The guest is only sent to the platform's own flow (DECISIONS #40): a warning instead of the payment-terms holds,
+        # and only when nothing else is wrong. The model and judges still run and can still hold it.
+        platform_routed = (
+            self.opts.platform_flow_warn
+            and direction == "hotel_to_guest"
+            and sig.platform_flow_only
+            and all(v.verdict == "official" for v in lv)
+            and not (
+                sig.off_platform_payment
+                or sig.off_platform_contact
+                or sig.phone_handoff
+                or sig.injection
+                or sig.impersonation
+                or sig.obfuscated
+                or sig.hidden_chars
+                or sig.mixed_script
+                or sig.overpayment
+            )
+        )
+        if platform_routed and ((sig.money_ask and terms == "pay_at_property") or sig.card_data):
+            escalate("warn", "PLATFORM_FLOW_MONEY_MENTION")
+            ev("platform_flow", sig.evidence.get("platform_flow", []))
+        elif direction == "hotel_to_guest":
             if sig.money_ask and terms == "pay_at_property":
                 escalate("hold", "PAY_ASK_ON_PAY_AT_HOTEL")
                 ev("money_ask", sig.evidence.get("money_ask", []))
@@ -345,16 +412,18 @@ class Engine:
 
         # 4. small model -------------------------------------------------------------------
         s = time.perf_counter()
-        model_p = self.clf.score(text)
+        model_p = self.clf.score(text, {**ctx, "signals": sig})
         partial["model_p"] = model_p
         stage("model", s, p=round(model_p, 4))
 
         judges_out, llm_called = None, False
         ruling_needed = False
+        model_high_routed = False  # a model-only hold sent to the judges instead (DECISIONS #39)
         if not rule_decided:
             # A card or payment-rail mention set aside only because a reassurance shared its clause never takes the
             # quiet fast path: the judges decide (review round 2, A1/B1). Worst case with judges down: a warning.
-            if quiet and not reasons and model_p <= config.MODEL_HIGH and not sig.reassured_sensitive and not sig.phone_handoff:
+            high = self.opts.model_high
+            if quiet and not reasons and model_p <= high and not sig.reassured_sensitive and not sig.phone_handoff:
                 path = "rule"
                 reasons.append("NO_PAYMENT_ASK")
             elif quiet and not reasons:
@@ -363,10 +432,14 @@ class Engine:
                 # trigger-happy on ordinary chat, so these go to the judges.
                 ruling_needed = True
             # a move to a phone call is never waved through on the model alone (review round 3, B2)
-            elif model_p < config.MODEL_LOW and worst < 0.3 and not unknown_link_with_instruction and not sig.phone_handoff:
+            elif model_p < self.opts.model_low and worst < 0.3 and not unknown_link_with_instruction and not sig.phone_handoff:
                 path = "model"
                 escalate("deliver", "MODEL_LOW_RISK")
-            elif model_p > config.MODEL_HIGH:
+            elif model_p > self.opts.model_high and self.opts.route_model_high_to_judges:
+                # Held-out v2: 2 of 10 false holds were model-only holds. The judges see these instead; if they are
+                # down, the message is still held, exactly as before.
+                ruling_needed = model_high_routed = True
+            elif model_p > self.opts.model_high:
                 path = "model"
                 escalate("hold", "MODEL_HIGH_RISK")
                 ev("model_terms", self.clf.top_terms(text))
@@ -415,6 +488,11 @@ class Engine:
                     path = "judges"
                     escalate("hold", "JUDGE_REPLY_UNUSABLE")
                     stage("judges", s, provider="reply_unusable")
+                elif model_high_routed:
+                    path = "degraded"
+                    escalate("hold", "MODEL_HIGH_RISK")
+                    ev("model_terms", self.clf.top_terms(text))
+                    stage("judges", s, provider="unavailable", breaker=self.breaker.state)
                 else:
                     path = "degraded"
                     if session.get("risk", 0) >= config.SESSION_RISKY:

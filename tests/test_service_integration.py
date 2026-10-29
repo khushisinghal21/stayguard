@@ -48,7 +48,7 @@ def test_degraded_path_through_the_service(service, monkeypatch):
             raise JudgeUnavailable("down")
 
     monkeypatch.setattr(service.engine, "judge", Down())
-    monkeypatch.setattr(service.engine.clf, "score", lambda t: 0.35)
+    monkeypatch.setattr(service.engine.clf, "score", lambda t, ctx=None: 0.35)
     out = service.check_message(text="Please let us know if you want breakfast, it is 12 EUR.", payment_terms="deposit")
     assert out["path"] == "degraded" and out["decision"] == "warn"
 
