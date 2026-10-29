@@ -9,7 +9,15 @@ Rule (stated before looking at the numbers):
 Both are clamped to [0.02, 0.98] and MODEL_LOW < MODEL_HIGH.
 Writes eval/calibration.json (thresholds, reliability bins) and eval/reliability.png.
 
-Usage: python -m eval.calibrate
+Context models (--classifier tfidf_ctx | encoder_ctx, DECISIONS #38/#41) use the same rule on a larger hotel set: the
+SMS calibration split + the dev set + held-out v2, retired as a blind set once held-out v3 was frozen. v2 was written by
+a separate agent, so it is the least correlated labelled hotel data we have; it is never trained on. These write
+eval/calibration_<kind>.json. Held-out v3 is never read here (a test enforces it).
+
+Per-language thresholds were considered (review of v2, item 4) and are only computed for a language with at least
+PER_LANGUAGE_MIN scams and PER_LANGUAGE_MIN legitimate calibration rows; the counts are written either way.
+
+Usage: python -m eval.calibrate [--classifier tfidf|tfidf_ctx|encoder_ctx]
 """
 
 from __future__ import annotations
@@ -17,6 +25,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -26,8 +35,10 @@ sys.path.insert(0, str(ROOT))
 
 from stayguard import config  # noqa: E402
 from stayguard.classifier import ScamClassifier  # noqa: E402
+from stayguard.signals import detect_language  # noqa: E402
 
 GRID = np.round(np.arange(0.02, 0.981, 0.01), 2)
+PER_LANGUAGE_MIN = 30
 
 
 def calibration_rows() -> pd.DataFrame:
@@ -41,6 +52,43 @@ def calibration_rows() -> pd.DataFrame:
         [{"text": r["text"], "label": r["label"], "source": "golden_dev"} for r in dev if r.get("split") == "dev"]
     )
     return pd.concat([sms, dev_df], ignore_index=True)
+
+
+def _hotel_rows(name: str, source: str) -> pd.DataFrame:
+    rows = [json.loads(x) for x in (config.DATA_CURATED / name).read_text(encoding="utf-8").splitlines() if x.strip()]
+    return pd.DataFrame(
+        [
+            {"text": r["text"], "label": r["label"], "source": source, "terms": r.get("terms"), "direction": r.get("direction")}
+            for r in rows
+        ]
+    )
+
+
+def context_calibration_rows() -> pd.DataFrame:
+    """SMS calibration + dev + retired held-out v2, with booking context where the set has it."""
+    from stayguard.classifier import sms_splits
+
+    # straight from the seeded split, so a fresh checkout does not need models/sms_calibration.csv first
+    sms = sms_splits()[1][["text", "label"]].assign(source="sms_calibration", terms=None, direction=None)
+    dev = _hotel_rows("golden_eval.jsonl", "golden_dev")
+    v2 = _hotel_rows("heldout_v2.jsonl", "heldout_v2_retired")
+    return pd.concat([sms, dev, v2], ignore_index=True)
+
+
+def per_language(p: np.ndarray, y: np.ndarray, langs: list[str]) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for lang in sorted(set(langs)):
+        m = np.array([x == lang for x in langs])
+        n_scam, n_legit = int(y[m].sum()), int((y[m] == 0).sum())
+        entry: dict = {
+            "n_scam": n_scam,
+            "n_legit": n_legit,
+            "eligible": n_scam >= PER_LANGUAGE_MIN and n_legit >= PER_LANGUAGE_MIN,
+        }
+        if entry["eligible"]:
+            entry["model_low"], entry["model_high"] = choose(p[m], y[m])
+        out[lang] = entry
+    return out
 
 
 def choose(p: np.ndarray, y: np.ndarray) -> tuple[float, float]:
@@ -113,7 +161,41 @@ def plot(rel_by_source: dict[str, list[dict]], low: float, high: float, path: Pa
     plt.close(fig)
 
 
+def main_context(kind: str) -> dict:
+    """kind: tfidf_ctx | encoder_ctx, or tfidf_recal = the ORIGINAL model with thresholds re-chosen on this larger set
+    (item 4 on its own, so the v3 run can tell recalibration apart from the new models)."""
+    from stayguard.ctx_classifier import load
+
+    clf: Any = ScamClassifier() if kind == "tfidf_recal" else load(kind)
+    df = context_calibration_rows()
+    p = np.array(
+        [
+            clf.score(t, {"payment_terms": terms or "unknown", "direction": d or "hotel_to_guest"})
+            for t, terms, d in zip(df.text, df.terms, df.direction, strict=True)
+        ]
+    )
+    y = df.label.to_numpy()
+    low, high = choose(p, y)
+    sources = ("sms_calibration", "golden_dev", "heldout_v2_retired")
+    out = {
+        "model_low": low,
+        "model_high": high,
+        "rule": "LOW: <=1% of calibration scams below; HIGH: <=1% of calibration legit above",
+        "n": int(len(df)),
+        "n_scam": int(y.sum()),
+        "by_source": {s: int((df.source == s).sum()) for s in sources},
+        "classifier_version": clf.version,
+        "classifier_report": getattr(clf, "report", {}),
+        "per_language": per_language(p, y, [detect_language(t) for t in df.text]),
+        "reliability": {s: reliability(p[(df.source == s).to_numpy()], y[(df.source == s).to_numpy()]) for s in sources},
+    }
+    config.calibration_path(kind).write_text(json.dumps(out, indent=2) + "\n")
+    return out
+
+
 def main() -> dict:
+    if len(sys.argv) > 2 and sys.argv[1] == "--classifier" and sys.argv[2] != "tfidf":
+        return main_context(sys.argv[2])
     clf = ScamClassifier()
     df = calibration_rows()
     p = np.array([clf.score(t) for t in df.text])

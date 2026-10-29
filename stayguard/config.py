@@ -23,8 +23,18 @@ DATA_CURATED = ROOT / "data" / "curated"
 # MODEL_LOW / MODEL_HIGH come from eval/calibration.json, chosen by eval/calibrate.py on the calibration split only
 # (SMS calibration rows + the dev golden set; never the held-out set). 0.10 / 0.90 are the old hand-set values,
 # used only when no calibration file exists. A test fails if these drift from the file.
-_CAL = EVAL_DIR / "calibration.json"
-_cal: dict[str, Any] = json.loads(_CAL.read_text()) if _CAL.exists() else {}
+# Each classifier kind has its own calibration file (DECISIONS #38): thresholds chosen for one model mean nothing
+# for another. "tfidf" keeps the original eval/calibration.json, so today's system is unchanged by default.
+CLASSIFIER_KINDS = ("tfidf", "tfidf_ctx", "encoder_ctx")
+
+
+def calibration_path(kind: str) -> Path:
+    return EVAL_DIR / ("calibration.json" if kind == "tfidf" else f"calibration_{kind}.json")
+
+
+def calibration_for(kind: str) -> dict[str, Any]:
+    path = calibration_path(kind)
+    return dict(json.loads(path.read_text())) if path.exists() else {}
 
 
 class ConfigError(ValueError):
@@ -39,8 +49,13 @@ class Settings(BaseSettings):
     models: Path = ROOT / "models"  # tests use a temp dir so they never overwrite real models
     db: Path = ROOT / "stayguard.db"
 
-    model_low: float = Field(float(_cal.get("model_low", 0.10)), ge=0.0, le=1.0)  # below -> deliver on the model path
-    model_high: float = Field(float(_cal.get("model_high", 0.90)), ge=0.0, le=1.0)  # above -> hold on the model path
+    # Which scam-language model the engine uses (DECISIONS #38). "tfidf" is the original model and the default.
+    classifier: str = "tfidf"
+    # Where scripts/fetch_encoder.py puts the multilingual encoder (only read when classifier=encoder_ctx).
+    encoder_dir: Path = ROOT / "models" / "encoder"
+    # None = take the thresholds from the chosen classifier's calibration file (an explicit value still wins).
+    model_low: float | None = Field(None, ge=0.0, le=1.0)  # below -> deliver on the model path
+    model_high: float | None = Field(None, ge=0.0, le=1.0)  # above -> hold on the model path
     session_risky: float = Field(0.70, ge=0.0, le=1.0)  # session risk above this escalates decisions
     session_critical: float = Field(0.90, ge=0.0, le=1.0)  # above this a money ask is blocked and containment is suggested
 
@@ -61,8 +76,30 @@ class Settings(BaseSettings):
     raw_retention_days: float = Field(7, gt=0.0)
     audit_anchor_every: int = Field(1, ge=0)  # 1 = anchor every row, so even the last rows can't be deleted unnoticed
 
+    # --- Pipeline options added after held-out v2 (DECISIONS #39-#42). All off by default: each is measured on the
+    # blind held-out v3 run before anyone switches it on.
+    # A model-only hold (model above MODEL_HIGH, no rule fired) goes to the judges instead; judges down -> still held.
+    route_model_high_to_judges: bool = False
+    # A money/card mention on a pay-at-property booking that only points the guest to the platform's own flow ("update
+    # the card in the Booking.com app", "paid at reception on arrival") is warned, not held, when nothing else is wrong.
+    platform_flow_warn: bool = False
+    # Shadow mode: decisions are computed, stored and returned with enforced=false, and the platform does not act on them.
+    enforce: bool = True
+    # Network link checks (domain age over RDAP, following redirects): opt-in, needs outbound network.
+    net_checks: bool = False
+    net_timeout: float = Field(2.0, gt=0.0, le=10.0)  # per request
+    net_budget: float = Field(3.0, gt=0.0, le=30.0)  # all network checks for one message together
+    new_domain_days: int = Field(30, ge=1, le=3650)  # registered less than this many days ago = newly registered
+
     @model_validator(mode="after")
     def _ordered(self) -> Settings:
+        if self.classifier not in CLASSIFIER_KINDS:
+            raise ValueError(f"CLASSIFIER must be one of {', '.join(CLASSIFIER_KINDS)} (got {self.classifier!r})")
+        cal = calibration_for(self.classifier)
+        if self.model_low is None:
+            self.model_low = float(cal.get("model_low", 0.10))
+        if self.model_high is None:
+            self.model_high = float(cal.get("model_high", 0.90))
         if not self.model_low < self.model_high:
             raise ValueError(f"MODEL_LOW ({self.model_low}) must be below MODEL_HIGH ({self.model_high})")
         if not self.session_risky < self.session_critical:
@@ -96,8 +133,18 @@ OPENPHISH = DATA_RAW / "openphish-feed.txt"  # OpenPhish public feed
 TOP_DOMAINS = DATA_RAW / "top-10000-domains.txt"  # top 10k domains (popularity allowlist)
 TOP_1M = DATA_RAW / "top-1m.txt"  # top 1M domains (evaluation only: ranks 10k-110k dev, 110k-210k held-out unseen legit)
 
-MODEL_LOW = _s.model_low  # below -> deliver on the model path
-MODEL_HIGH = _s.model_high  # above -> hold on the model path
+CLASSIFIER = _s.classifier
+ENCODER_DIR = _s.encoder_dir
+# the validator always fills both; the fallbacks only satisfy the type checker
+MODEL_LOW: float = _s.model_low if _s.model_low is not None else 0.10  # below -> deliver on the model path
+MODEL_HIGH: float = _s.model_high if _s.model_high is not None else 0.90  # above -> hold on the model path
+ROUTE_MODEL_HIGH_TO_JUDGES = _s.route_model_high_to_judges
+PLATFORM_FLOW_WARN = _s.platform_flow_warn
+ENFORCE = _s.enforce
+NET_CHECKS = _s.net_checks
+NET_TIMEOUT_S = _s.net_timeout
+NET_BUDGET_S = _s.net_budget
+NEW_DOMAIN_DAYS = _s.new_domain_days
 SESSION_RISKY = _s.session_risky  # session risk above this escalates decisions
 SESSION_CRITICAL = _s.session_critical  # above this a money ask is blocked and containment is suggested
 

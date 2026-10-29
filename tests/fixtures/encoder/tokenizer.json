@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "truncation": null,
+  "padding": null,
+  "added_tokens": [],
+  "normalizer": null,
+  "pre_tokenizer": {
+    "type": "Whitespace"
+  },
+  "post_processor": null,
+  "decoder": null,
+  "model": {
+    "type": "WordLevel",
+    "vocab": {
+      "<s>": 0,
+      "<pad>": 1,
+      "</s>": 2,
+      "<unk>": 3,
+      "query:": 4,
+      "pay": 5,
+      "deposit": 6,
+      "card": 7,
+      "now": 8,
+      "link": 9,
+      "welcome": 10,
+      "breakfast": 11,
+      "check-in": 12,
+      "is": 13,
+      "from": 14,
+      "3": 15,
+      "pm": 16,
+      "please": 17,
+      "the": 18,
+      "your": 19
+    },
+    "unk_token": "<unk>"
+  }
+}

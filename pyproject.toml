@@ -22,6 +22,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.11", "pre-commit>=3.7", "matplotlib>=3.8", "pandas-stubs"]
+# The multilingual encoder (DECISIONS #38): ONNX runtime + tokenizer, no torch. Weights are fetched by
+# scripts/fetch_encoder.py, not installed by pip. Pinned in requirements-encoder.lock.
+encoder = ["onnxruntime>=1.18", "tokenizers>=0.19", "huggingface-hub>=0.24"]
 
 [build-system]
 requires = ["setuptools>=68"]
