@@ -1,0 +1,349 @@
+{
+  "model_low": 0.06,
+  "model_high": 0.9,
+  "rule": "LOW: <=1% of calibration scams below; HIGH: <=1% of calibration legit above",
+  "n": 1039,
+  "n_scam": 232,
+  "by_source": {
+    "sms_calibration": 776,
+    "golden_dev": 115,
+    "heldout_v2_retired": 148
+  },
+  "classifier_version": "e5s-ctx-1",
+  "classifier_report": {
+    "kind": "encoder_ctx",
+    "version": "e5s-ctx-1",
+    "C": 16.0,
+    "cv_log_loss": {
+      "0.25": 0.2629,
+      "1.0": 0.1721,
+      "4.0": 0.1214,
+      "16.0": 0.0965,
+      "64.0": 0.1005
+    },
+    "n_train": 3978,
+    "by_source": {
+      "sms": 3102,
+      "hotel_seed": 752,
+      "heldout_v1_retired": 124
+    },
+    "encoder": "Xenova/multilingual-e5-small@761b726"
+  },
+  "per_language": {
+    "de": {
+      "n_scam": 5,
+      "n_legit": 1,
+      "eligible": false
+    },
+    "en": {
+      "n_scam": 208,
+      "n_legit": 794,
+      "eligible": true,
+      "model_low": 0.06,
+      "model_high": 0.88
+    },
+    "es": {
+      "n_scam": 7,
+      "n_legit": 4,
+      "eligible": false
+    },
+    "fr": {
+      "n_scam": 2,
+      "n_legit": 2,
+      "eligible": false
+    },
+    "hi": {
+      "n_scam": 4,
+      "n_legit": 3,
+      "eligible": false
+    },
+    "hinglish": {
+      "n_scam": 5,
+      "n_legit": 3,
+      "eligible": false
+    },
+    "pt": {
+      "n_scam": 1,
+      "n_legit": 0,
+      "eligible": false
+    }
+  },
+  "reliability": {
+    "sms_calibration": [
+      {
+        "bin": [
+          0.0,
+          0.1
+        ],
+        "n": 640,
+        "mean_predicted": 0.0096,
+        "observed_scam_rate": 0.0047
+      },
+      {
+        "bin": [
+          0.1,
+          0.2
+        ],
+        "n": 23,
+        "mean_predicted": 0.1318,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.2,
+          0.3
+        ],
+        "n": 10,
+        "mean_predicted": 0.237,
+        "observed_scam_rate": 0.1
+      },
+      {
+        "bin": [
+          0.3,
+          0.4
+        ],
+        "n": 6,
+        "mean_predicted": 0.3601,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.4,
+          0.5
+        ],
+        "n": 3,
+        "mean_predicted": 0.4618,
+        "observed_scam_rate": 0.6667
+      },
+      {
+        "bin": [
+          0.5,
+          0.6
+        ],
+        "n": 4,
+        "mean_predicted": 0.5399,
+        "observed_scam_rate": 0.75
+      },
+      {
+        "bin": [
+          0.6,
+          0.7
+        ],
+        "n": 1,
+        "mean_predicted": 0.6094,
+        "observed_scam_rate": 1.0
+      },
+      {
+        "bin": [
+          0.7,
+          0.8
+        ],
+        "n": 4,
+        "mean_predicted": 0.757,
+        "observed_scam_rate": 1.0
+      },
+      {
+        "bin": [
+          0.8,
+          0.9
+        ],
+        "n": 5,
+        "mean_predicted": 0.8786,
+        "observed_scam_rate": 1.0
+      },
+      {
+        "bin": [
+          0.9,
+          1.0
+        ],
+        "n": 80,
+        "mean_predicted": 0.9839,
+        "observed_scam_rate": 0.9875
+      }
+    ],
+    "golden_dev": [
+      {
+        "bin": [
+          0.0,
+          0.1
+        ],
+        "n": 33,
+        "mean_predicted": 0.0309,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.1,
+          0.2
+        ],
+        "n": 8,
+        "mean_predicted": 0.1367,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.2,
+          0.3
+        ],
+        "n": 3,
+        "mean_predicted": 0.2558,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.3,
+          0.4
+        ],
+        "n": 3,
+        "mean_predicted": 0.3809,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.4,
+          0.5
+        ],
+        "n": 2,
+        "mean_predicted": 0.4357,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.5,
+          0.6
+        ],
+        "n": 3,
+        "mean_predicted": 0.5599,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.6,
+          0.7
+        ],
+        "n": 1,
+        "mean_predicted": 0.6383,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.7,
+          0.8
+        ],
+        "n": 2,
+        "mean_predicted": 0.7992,
+        "observed_scam_rate": 0.5
+      },
+      {
+        "bin": [
+          0.8,
+          0.9
+        ],
+        "n": 1,
+        "mean_predicted": 0.8664,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.9,
+          1.0
+        ],
+        "n": 59,
+        "mean_predicted": 0.9896,
+        "observed_scam_rate": 1.0
+      }
+    ],
+    "heldout_v2_retired": [
+      {
+        "bin": [
+          0.0,
+          0.1
+        ],
+        "n": 22,
+        "mean_predicted": 0.0322,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.1,
+          0.2
+        ],
+        "n": 15,
+        "mean_predicted": 0.1504,
+        "observed_scam_rate": 0.0667
+      },
+      {
+        "bin": [
+          0.2,
+          0.3
+        ],
+        "n": 8,
+        "mean_predicted": 0.2446,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.3,
+          0.4
+        ],
+        "n": 7,
+        "mean_predicted": 0.3384,
+        "observed_scam_rate": 0.2857
+      },
+      {
+        "bin": [
+          0.4,
+          0.5
+        ],
+        "n": 5,
+        "mean_predicted": 0.4305,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.5,
+          0.6
+        ],
+        "n": 3,
+        "mean_predicted": 0.5569,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.6,
+          0.7
+        ],
+        "n": 2,
+        "mean_predicted": 0.6268,
+        "observed_scam_rate": 0.0
+      },
+      {
+        "bin": [
+          0.7,
+          0.8
+        ],
+        "n": 4,
+        "mean_predicted": 0.7708,
+        "observed_scam_rate": 0.25
+      },
+      {
+        "bin": [
+          0.8,
+          0.9
+        ],
+        "n": 8,
+        "mean_predicted": 0.8626,
+        "observed_scam_rate": 0.375
+      },
+      {
+        "bin": [
+          0.9,
+          1.0
+        ],
+        "n": 74,
+        "mean_predicted": 0.987,
+        "observed_scam_rate": 0.9054
+      }
+    ]
+  }
+}
