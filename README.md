@@ -165,9 +165,11 @@ Or `docker compose up --build` (demo mode on), then open http://localhost:8000.
 (`STAYGUARD_DEMO_MODE=1`) adds the console's demo endpoints (issuing a guest PIN, the scripted attack, samples) and,
 if no key is set, lets the console call everything without one. Never run demo mode on a public host.
 
-**Optional: real LLM judges.** Set `STAYGUARD_ANTHROPIC_API_KEY` (and optionally `STAYGUARD_LLM_MODEL`). Without
-it a deterministic offline judge runs in their place, so everything works with no key and no network; the UI
-says which one is active.
+**Optional: real LLM judges.** Set `STAYGUARD_GEMINI_API_KEY` (Google AI Studio; free tier available, default model
+`gemini-3.5-flash-lite`, change with `STAYGUARD_GEMINI_MODEL`) or `STAYGUARD_ANTHROPIC_API_KEY` (optionally
+`STAYGUARD_LLM_MODEL`). Without a key a deterministic offline judge runs in their place, so everything works with no
+key and no network; the UI says which one is active. Google may use free-tier requests to improve its products, so use
+a paid key for real guest messages (DECISIONS #44).
 
 Development: see `CONTRIBUTING.md` (`make lint types test`). Agents: see `CLAUDE.md` for the invariants.
 
@@ -192,7 +194,8 @@ make install-encoder         # dev toolchain + onnxruntime/tokenizers, hash-pinn
 make encoder                 # fetch the encoder, train encoder_ctx, write eval/calibration_encoder_ctx.json
 git add eval/calibration_encoder_ctx.json && git commit -m "Calibrate the encoder model for the v3 run"
 make eval-v3                 # ONE blind run -> eval/heldout_v3_first_look.json (refuses a dirty tree)
-# optional, same commit, real judges: STAYGUARD_ANTHROPIC_API_KEY=... python -m eval.evaluate_v3 --add-arm candidate_real_judges
+# optional, same commit, real judges (Gemini free tier; pace to your AI Studio limit):
+#   STAYGUARD_GEMINI_API_KEY=... python -m eval.evaluate_v3 --add-arm candidate_real_judges --judge-rpm 10
 ```
 
 The primary comparison is fixed in advance: the candidate (encoder + context + platform-flow warning + routing)

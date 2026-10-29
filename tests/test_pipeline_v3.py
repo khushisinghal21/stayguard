@@ -616,3 +616,44 @@ def test_v3_runner_end_to_end_on_substitute_rows(monkeypatch, tmp_path, tfidf_ct
         ev3.main([])
     ev3.main(["--rerun-not-blind"])
     assert (tmp_path / "rerun.json").exists()
+    assert r["run_conditions"]["real_judges"] is None
+
+
+def test_v3_runner_with_a_gemini_key_keeps_every_other_arm_offline(monkeypatch, tmp_path, tfidf_ctx):
+    """Regression: with a key in the environment, Engine() picked the real judge for EVERY arm, today's system
+    included, so the pre-registered comparison would silently have changed. Found while adding Gemini (DECISIONS #44)."""
+    if not all(__import__("importlib.util").util.find_spec(m) for m in ("onnxruntime", "tokenizers")):
+        pytest.skip("encoder runtime not installed")
+    sys.path.insert(0, str(ROOT))
+    import eval.evaluate_v3 as ev3
+
+    dev = [json.loads(x) for x in (ROOT / "data" / "curated" / "golden_eval.jsonl").read_text().splitlines() if x.strip()][:12]
+    monkeypatch.setattr(ev3, "load_rows", lambda name: dev)
+    monkeypatch.setattr(ev3, "FIRST_LOOK_V3", tmp_path / "first.json")
+    monkeypatch.setattr(ev3, "gate", lambda add_arm: None)
+    monkeypatch.setattr(config, "ENCODER_DIR", FIXTURE_ENCODER)
+    monkeypatch.setattr(config, "JUDGE_PROVIDER", "gemini")
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "g")
+    real_cal = config.calibration_for
+    monkeypatch.setattr(
+        config,
+        "calibration_for",
+        lambda kind: {"model_low": 0.05, "model_high": 0.85} if kind == "encoder_ctx" else real_cal(kind),
+    )
+    calls = []
+
+    def fake_post(url, timeout, headers, json):  # noqa: A002 - mirrors httpx.post's keyword
+        calls.append(url)
+        body = {"verdict": "legit", "confidence": 0.6, "evidence": [], "rationale": "r"}
+        return httpx.Response(
+            200,
+            json={"candidates": [{"content": {"parts": [{"text": __import__("json").dumps(body)}]}}]},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    r = ev3.main(["--judge-rpm", "600000"])
+    assert r["run_conditions"]["judge_provider"] == "offline-deterministic"
+    assert r["run_conditions"]["real_judges"].startswith("gemini:") and "candidate_real_judges" in r["systems"]
+    judged = r["systems"]["candidate_real_judges"]["paths"].get("judges", 0)
+    assert len(calls) == 2 * judged  # only the real-judge arm called Gemini: two judges per judged message

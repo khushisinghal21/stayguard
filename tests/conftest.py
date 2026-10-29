@@ -11,7 +11,8 @@ os.environ["STAYGUARD_DEMO_MODE"] = "1"
 # Offline, deterministic: small checked-in data snapshot and a throwaway model directory.
 os.environ["STAYGUARD_DATA_RAW"] = str(Path(__file__).resolve().parent / "fixtures" / "raw")
 os.environ["STAYGUARD_MODELS"] = str(Path(_tmp) / "models")
-os.environ.pop("STAYGUARD_ANTHROPIC_API_KEY", None)
+for _k in ("STAYGUARD_ANTHROPIC_API_KEY", "STAYGUARD_GEMINI_API_KEY", "STAYGUARD_JUDGE_PROVIDER"):
+    os.environ.pop(_k, None)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 

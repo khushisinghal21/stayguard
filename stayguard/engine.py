@@ -126,11 +126,15 @@ def judge_cost_estimate_usd(message: str = "x" * 200) -> float:
     """ESTIMATED cost of judging one message with two LLM judges at the configured price (see config.py)."""
     from .judges import BRIEFS, SYSTEM
 
+    # the configured provider's prices; the Anthropic ones when no real judge is configured (the report's hypothetical)
+    gemini = config.JUDGE_PROVIDER == "gemini"
+    price_in = config.GEMINI_PRICE_IN_PER_MTOK if gemini else config.LLM_PRICE_IN_PER_MTOK
+    price_out = config.GEMINI_PRICE_OUT_PER_MTOK if gemini else config.LLM_PRICE_OUT_PER_MTOK
     total = 0.0
     for role, brief in BRIEFS.items():
         prompt_chars = len(SYSTEM.format(role=role, brief=brief)) + len(message) + 200  # 200 = context + tags
-        total += (prompt_chars / 4) * config.LLM_PRICE_IN_PER_MTOK / 1e6
-        total += config.JUDGE_OUTPUT_TOKENS * config.LLM_PRICE_OUT_PER_MTOK / 1e6
+        total += (prompt_chars / 4) * price_in / 1e6
+        total += config.JUDGE_OUTPUT_TOKENS * price_out / 1e6
     return total
 
 
@@ -558,4 +562,5 @@ class Engine:
 
     @property
     def judge_provider(self) -> str:
-        return getattr(self.judge, "name", "unknown") if not hasattr(self.judge, "model") else f"anthropic:{self.judge.model}"
+        name = getattr(self.judge, "name", "unknown")
+        return f"{name}:{self.judge.model}" if hasattr(self.judge, "model") else name

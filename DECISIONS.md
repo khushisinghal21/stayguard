@@ -396,6 +396,29 @@ rows.
   calibration rows (`eval/calibration_tfidf_ctx.json`, `per_language`).
 - Whatever v3 shows is reported as it comes out, including a candidate that does worse than today's system.
 
+### 44. Gemini as a judge provider, and the v3 real-judge arm on its free tier
+Anthropic's API has no free credits, so the real prosecutor/defender judges could not be measured without paying.
+`GeminiJudge` (`stayguard/judges.py`) runs the same two judges over Google's generateContent API, default model
+`gemini-3.5-flash-lite` (stable, free tier available, minimal thinking by default, so it answers quickly). It shares
+everything that matters with the Anthropic judge: the prompts, the untrusted-message wrapping, the shared reply parser
+(`parse_opinion`), the quote check, the referee, and the split between provider failures (HTTP errors, rate limits,
+no candidates: these feed the breaker) and replies unusable for this message (a safety block, no JSON: held, breaker
+untouched). Google's content filters are lowered to "block only high" because scam text is the input by design.
+- Chosen by `STAYGUARD_GEMINI_API_KEY` (its own variable, like the Anthropic key), or explicitly with
+  `STAYGUARD_JUDGE_PROVIDER`; both keys set without a choice stops start-up.
+- **Free-tier data use:** Google's pricing page marks free-tier requests as "Used to improve our products". Judges only
+  ever see masked text (invariant 5), and the v3 messages are written test data, so the free tier is fine for the
+  evaluation. Real guest messages need a paid key, whose requests are not used that way.
+- Free-tier limits are per minute and per day, set per project in Google AI Studio. The v3 runner paces the real-judge
+  arm (`--judge-rpm`, default 10), retries rate-limit answers, and gives each call 60 s, so a quota shows up as
+  slowness, not as an outage; the arm still reports how many messages took the degraded path. In production none of
+  that applies: the 3 s timeout and the breaker stand.
+- Found while adding this: with any API key in the environment, the v3 runner built every arm, today's system included,
+  with the real judge, which would have silently changed the pre-registered comparison. Every arm except the real-judge
+  arm now uses the offline judge explicitly, and a test pins it.
+- Cost estimates use the configured provider's paid prices (Gemini 3.5 Flash-Lite: estimates from the pricing page,
+  checked 2026-10-29); the report, which runs with no key, keeps the Anthropic estimate as before.
+
 ## Known limits
 - Dev and held-out v1 have the same author as the rules, and v1 was tuned on after its first run (#28). Held-out v2
   has a different author but is still small (148) and written, not collected. Real validation needs labelled
