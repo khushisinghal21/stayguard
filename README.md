@@ -2,6 +2,10 @@
 
 **Stops reservation-hijack scams sent from compromised hotel accounts — before the guest sees them.**
 
+*Independent project, not affiliated with or endorsed by Booking.com or Booking Holdings. The attack it targets is
+documented in public reporting (Perception Point, Akamai, Secureworks, Microsoft); the demo's scam messages use real
+phishing domains from public feeds, so treat every link in them as live and do not open them.*
+
 Criminals phish hotel staff, steal their extranet session, read upcoming reservations, then message guests
 *through the real booking platform*: "your card failed, re-confirm within 12 hours or we cancel". The message
 comes from the real hotel, in the real app, about the real booking, so guests trust it. A blocklist can't help
