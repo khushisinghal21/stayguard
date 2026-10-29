@@ -11,8 +11,9 @@ PRIMARY: is the candidate pipeline better than today's system on held-out v3?
 
 SECONDARY (exploratory, no multiple-comparison claim): one arm per change, each against baseline_today, so the run
 shows which change helps or hurts: today's model recalibrated, platform-flow only, routing only, tfidf_ctx, encoder_ctx
-alone; the candidate with the judges down; both classifiers alone; and, if STAYGUARD_ANTHROPIC_API_KEY is set, the
-candidate with the real prosecutor/defender judges.
+alone; the candidate with the judges down; both classifiers alone; and, if STAYGUARD_GEMINI_API_KEY (or
+STAYGUARD_ANTHROPIC_API_KEY) is set, the candidate with real prosecutor/defender judges (DECISIONS #44). Every other arm
+uses the offline judge whatever keys are set, so the comparison stays the pre-registered one.
 
 Not measured here: network link checks (DECISIONS #42). v3's domains are invented, so every one would come back
 "not registered" and the result would say nothing about real links.
@@ -52,7 +53,26 @@ FIRST_LOOK_V3 = config.EVAL_DIR / "heldout_v3_first_look.json"
 RERUN_V3 = config.EVAL_DIR / "heldout_v3_rerun_NOT_BLIND.json"
 BASELINE_THRESHOLDS = (0.03, 0.52)  # eval/calibration.json at da6d30d: today's system
 PRIMARY = ("candidate", "baseline_today")
-ALLOWED_ENV = {"STAYGUARD_ANTHROPIC_API_KEY"}
+ALLOWED_ENV = {"STAYGUARD_ANTHROPIC_API_KEY", "STAYGUARD_GEMINI_API_KEY", "STAYGUARD_JUDGE_PROVIDER"}
+REAL_JUDGE_TIMEOUT_S = 60.0  # the free tier queues requests; a slow answer is not an outage in an offline evaluation
+REAL_JUDGE_RETRIES_ON_429 = 5
+
+
+def real_judge(rpm: float) -> Any | None:
+    """The real-judge arm's judge, or None without a key. Paced to `rpm` requests a minute (free-tier limits are set per
+    project in Google AI Studio) and retrying rate-limit answers, so a quota is not measured as the judges being down."""
+    from stayguard.judges import AnthropicJudge, GeminiJudge
+
+    if config.JUDGE_PROVIDER == "gemini":
+        return GeminiJudge(
+            config.GEMINI_API_KEY,
+            timeout=REAL_JUDGE_TIMEOUT_S,
+            min_interval_s=60.0 / rpm,
+            retries_on_429=REAL_JUDGE_RETRIES_ON_429,
+        )
+    if config.JUDGE_PROVIDER == "anthropic":
+        return AnthropicJudge(config.LLM_API_KEY, timeout=REAL_JUDGE_TIMEOUT_S)
+    return None
 
 
 def _cal(kind: str) -> tuple[float, float]:
@@ -146,6 +166,9 @@ def summarise(rows: list[dict[str, Any]], ds: list[Any]) -> dict[str, Any]:
     lat = np.array([d.latency_ms for d in ds])
     out["p50_ms"], out["p95_ms"] = round(float(np.percentile(lat, 50)), 2), round(float(np.percentile(lat, 95)), 2)
     out["judge_share"] = round(sum(d.path in ("judges", "degraded") for d in ds) / len(ds), 6)
+    # how often the judges were asked but could not answer (rate limits and outages show up here, not as "judged")
+    out["paths"] = {p: sum(d.path == p for d in ds) for p in sorted({d.path for d in ds})}
+    out["judge_reply_unusable"] = sum("JUDGE_REPLY_UNUSABLE" in d.reasons for d in ds)
     groups: dict[str, dict[str, Any]] = defaultdict(lambda: {"n": 0, "held": 0, "warned": 0, "clean": 0})
     for x, d in zip(rows, ds, strict=True):
         outcome = "held" if d.decision in ("hold", "block") else "warned" if d.decision == "warn" else "clean"
@@ -171,6 +194,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap = argparse.ArgumentParser()
     ap.add_argument("--add-arm", choices=["candidate_real_judges"], help="add the real-judge arm to an existing first look")
     ap.add_argument("--rerun-not-blind", action="store_true", help="run again after the first look (written separately)")
+    ap.add_argument("--judge-rpm", type=float, default=10.0, help="pace real-judge requests (Gemini free tier)")
     args = ap.parse_args(argv)
     if FIRST_LOOK_V3.exists() and not (args.add_arm or args.rerun_not_blind):
         raise SystemExit("held-out v3 already had its blind run; use --rerun-not-blind (results are NOT blind)")
@@ -181,13 +205,18 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     t0 = time.time()
     links = LinkChecker()  # offline: v3 domains are invented (see module docstring)
     specs = arm_specs()
-    key = config.LLM_API_KEY
+    judge = real_judge(args.judge_rpm)
+    key = judge is not None
     if args.add_arm and not key:
-        raise SystemExit("--add-arm candidate_real_judges needs STAYGUARD_ANTHROPIC_API_KEY")
+        raise SystemExit("--add-arm candidate_real_judges needs STAYGUARD_GEMINI_API_KEY (or STAYGUARD_ANTHROPIC_API_KEY)")
     from stayguard.encoder import EncoderUnavailable
+    from stayguard.judges import OfflineJudge
 
     try:
-        engines = {name: Engine(link_checker=links, options=EngineOptions(**opts)) for name, opts in specs.items()}
+        # explicitly offline: a key in the environment must not switch today's system or the candidate to a real judge
+        engines = {
+            name: Engine(link_checker=links, judge=OfflineJudge(), options=EngineOptions(**opts)) for name, opts in specs.items()
+        }
     except EncoderUnavailable as e:
         raise SystemExit(f"refusing: the encoder is not ready ({e}). Run: make encoder") from None
     ds: dict[str, list[Any]] = {}
@@ -196,10 +225,9 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         ds[name] = run_arm(engines[name], rows)
     if not args.add_arm:
         ds["candidate_judges_down"] = run_arm(engines["candidate"], rows, outage=True)
-    if key:
-        from stayguard.judges import AnthropicJudge
-
-        real = Engine(link_checker=links, judge=AnthropicJudge(key), options=EngineOptions(**specs["candidate"]))
+    real = None
+    if judge is not None:
+        real = Engine(link_checker=links, judge=judge, options=EngineOptions(**specs["candidate"]))
         ds["candidate_real_judges"] = run_arm(real, rows)
     systems = {name: summarise(rows, d) for name, d in ds.items() if not (args.add_arm and name == "baseline_today")}
     if not args.add_arm:
@@ -253,7 +281,14 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         "run_conditions": {
             "classifier_versions": {n: e.clf.version for n, e in engines.items()},
             "judge_provider": engines["candidate"].judge_provider,
-            "real_judges": bool(key),
+            "real_judges": real.judge_provider if real is not None else None,
+            "real_judge_pacing": {
+                "rpm": args.judge_rpm,
+                "timeout_s": REAL_JUDGE_TIMEOUT_S,
+                "retries_on_429": REAL_JUDGE_RETRIES_ON_429,
+            }
+            if real is not None
+            else None,
             "data_manifest_hash": manifest_info()["data_manifest_hash"],
             "encoder_manifest": json.loads((config.ENCODER_DIR / "MANIFEST.json").read_text()),
             "seconds": round(time.time() - t0, 1),

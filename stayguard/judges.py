@@ -8,6 +8,9 @@
 
 Providers
 - AnthropicJudge: used when STAYGUARD_ANTHROPIC_API_KEY is set. Hard timeout (3 s by default).
+- GeminiJudge: used when STAYGUARD_GEMINI_API_KEY is set (DECISIONS #44): the same prompts, parsing and quote checks,
+  over Google's generateContent API. Its free tier is free of charge but Google may use the requests to improve its
+  products, so it is for testing on written messages; production traffic needs a paid key.
 - OfflineJudge: deterministic stand-in built from the same signals, so the whole system runs with no key and
   no network. Results say which one was used.
 A circuit breaker opens after repeated failures; while it is open the router uses the degraded policy.
@@ -328,18 +331,54 @@ BRIEFS = {
 }
 
 
+def parse_opinion(role: str, text: str, masked: str) -> JudgeOpinion:
+    """Shared by every LLM provider: one judge's reply text -> a checked opinion. A reply that cannot be used for THIS
+    message (no JSON, bad fields) is JudgeReplyUnusable: the message is held, and the shared breaker is not fed."""
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if not m:
+        raise JudgeReplyUnusable("judge returned no JSON")
+    try:
+        data = json.loads(m.group())
+    except json.JSONDecodeError as e:
+        raise JudgeReplyUnusable("truncated or invalid JSON") from e
+    # The reply is untrusted too: a malformed one is a provider failure, not a crash.
+    if not isinstance(data, dict):
+        raise JudgeReplyUnusable("reply is not a JSON object")
+    verdict = data.get("verdict")
+    if verdict not in ("scam", "legit"):
+        raise JudgeReplyUnusable("bad verdict")
+    try:
+        confidence = float(data.get("confidence", 0.5))
+    except (TypeError, ValueError) as e:
+        raise JudgeReplyUnusable("bad confidence") from e
+    if confidence != confidence:  # NaN
+        raise JudgeReplyUnusable("bad confidence")
+    evidence = data.get("evidence", [])
+    if not isinstance(evidence, list):
+        raise JudgeReplyUnusable("evidence is not a list")
+    ok, bad = validate_quotes([str(q) for q in evidence][:6], masked)
+    return JudgeOpinion(role, verdict, max(0.0, min(1.0, confidence)), ok, bad, str(data.get("rationale", ""))[:300])
+
+
 class AnthropicJudge:
     name = "anthropic"
 
     def __init__(self, api_key: str, model: str = config.LLM_MODEL, timeout: float = config.LLM_TIMEOUT_S):
         self.api_key, self.model, self.timeout = api_key, model, timeout
 
-    def _ask(self, role: str, masked: str, ctx: dict[str, Any]) -> JudgeOpinion:
-        user = (
+    @staticmethod
+    def _user(masked: str, ctx: dict[str, Any]) -> str:
+        return (
             f"Booking context: payment terms = {ctx.get('payment_terms')}, direction = {ctx.get('direction')}, "
             f"sender session risk = {ctx.get('session_level')}.\n"
             f"<untrusted_message>\n{masked[:MAX_JUDGE_CHARS]}\n</untrusted_message>"
         )
+
+    def _ask(self, role: str, masked: str, ctx: dict[str, Any]) -> JudgeOpinion:
+        return parse_opinion(role, self._complete(role, self._user(masked, ctx)), masked)
+
+    def _complete(self, role: str, user: str) -> str:
+        """The provider call: returns the reply text. Provider-specific; the parsing is shared (parse_opinion)."""
         r = httpx.post(
             "https://api.anthropic.com/v1/messages",
             timeout=self.timeout,
@@ -357,31 +396,7 @@ class AnthropicJudge:
         # `[]` used to raise AttributeError, which the engine treats as a bug - review round 1).
         if not isinstance(body, dict) or not isinstance(body.get("content"), list):
             raise JudgeUnavailable("reply has no content list")
-        text = "".join(str(b.get("text", "")) for b in body["content"] if isinstance(b, dict))
-        m = re.search(r"\{.*\}", text, re.DOTALL)
-        if not m:
-            raise JudgeReplyUnusable("judge returned no JSON")
-        try:
-            data = json.loads(m.group())
-        except json.JSONDecodeError as e:
-            raise JudgeReplyUnusable("truncated or invalid JSON") from e
-        # The reply is untrusted too: a malformed one is a provider failure, not a crash.
-        if not isinstance(data, dict):
-            raise JudgeReplyUnusable("reply is not a JSON object")
-        verdict = data.get("verdict")
-        if verdict not in ("scam", "legit"):
-            raise JudgeReplyUnusable("bad verdict")
-        try:
-            confidence = float(data.get("confidence", 0.5))
-        except (TypeError, ValueError) as e:
-            raise JudgeReplyUnusable("bad confidence") from e
-        if confidence != confidence:  # NaN
-            raise JudgeReplyUnusable("bad confidence")
-        evidence = data.get("evidence", [])
-        if not isinstance(evidence, list):
-            raise JudgeReplyUnusable("evidence is not a list")
-        ok, bad = validate_quotes([str(q) for q in evidence][:6], masked)
-        return JudgeOpinion(role, verdict, max(0.0, min(1.0, confidence)), ok, bad, str(data.get("rationale", ""))[:300])
+        return "".join(str(b.get("text", "")) for b in body["content"] if isinstance(b, dict))
 
     def rule(self, masked: str, sig: TextSignals, ctx: dict[str, Any], model_p: float, link_worst: float) -> Ruling:
         t0 = time.perf_counter()
@@ -415,7 +430,98 @@ class AnthropicJudge:
                 raise r  # a bug in our parsing code: let the engine fail closed
         if not isinstance(pro, JudgeOpinion) or not isinstance(de, JudgeOpinion):  # unreachable; keeps types honest
             raise JudgeUnavailable("judge returned no opinion")
-        return Ruling(referee(pro, de), pro, de, f"anthropic:{self.model}", (time.perf_counter() - t0) * 1000)
+        return Ruling(referee(pro, de), pro, de, f"{self.name}:{self.model}", (time.perf_counter() - t0) * 1000)
+
+
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+# Scam text is about fraud, so Google's default content filters could block it before the judges read it. Only the
+# highest-severity blocks stay on; a block that still happens is treated as unusable for this message (held), never as
+# the provider being down.
+GEMINI_SAFETY = [
+    {"category": c, "threshold": "BLOCK_ONLY_HIGH"}
+    for c in (
+        "HARM_CATEGORY_HARASSMENT",
+        "HARM_CATEGORY_HATE_SPEECH",
+        "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        "HARM_CATEGORY_DANGEROUS_CONTENT",
+    )
+]
+
+
+class GeminiJudge(AnthropicJudge):
+    """The same prosecutor/defender pair over Google's Gemini API (DECISIONS #44). Prompts, the referee, quote checks
+    and the provider-vs-content error split are inherited; only the HTTP call differs.
+
+    min_interval_s and retries_on_429 exist for the free tier's per-minute limits. Both default to off, because sleeping
+    on the request path is wrong in production; eval/evaluate_v3.py turns them on, with a longer timeout, so a rate limit
+    is not measured as an outage."""
+
+    name = "gemini"
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = config.GEMINI_MODEL,
+        timeout: float = config.LLM_TIMEOUT_S,
+        min_interval_s: float = 0.0,
+        retries_on_429: int = 0,
+    ):
+        super().__init__(api_key, model=model, timeout=timeout)
+        self.min_interval_s, self.retries_on_429 = min_interval_s, retries_on_429
+        self._next_slot = 0.0
+        self._slot_lock = threading.Lock()
+
+    def _wait_for_slot(self) -> None:
+        if self.min_interval_s <= 0:
+            return
+        with self._slot_lock:
+            now = time.monotonic()
+            start = max(now, self._next_slot)
+            self._next_slot = start + self.min_interval_s
+        if start > now:
+            time.sleep(start - now)
+
+    def _complete(self, role: str, user: str) -> str:
+        payload = {
+            "systemInstruction": {"parts": [{"text": SYSTEM.format(role=role, brief=BRIEFS[role])}]},
+            "contents": [{"role": "user", "parts": [{"text": user}]}],
+            "generationConfig": {"responseMimeType": "application/json", "temperature": 0.0, "maxOutputTokens": 1024},
+            "safetySettings": GEMINI_SAFETY,
+        }
+        for attempt in range(self.retries_on_429 + 1):
+            self._wait_for_slot()
+            r = httpx.post(
+                GEMINI_URL.format(model=self.model),
+                timeout=self.timeout,
+                headers={"x-goog-api-key": self.api_key, "content-type": "application/json"},
+                json=payload,
+            )
+            if r.status_code == 429 and attempt < self.retries_on_429:
+                try:
+                    wait = float(r.headers.get("retry-after", ""))
+                except ValueError:
+                    wait = 5.0 * 2**attempt
+                time.sleep(min(max(wait, 1.0), 60.0))
+                continue
+            break
+        r.raise_for_status()
+        body = r.json()
+        if not isinstance(body, dict):
+            raise JudgeUnavailable("reply is not an object")
+        feedback = body.get("promptFeedback")
+        if isinstance(feedback, dict) and feedback.get("blockReason"):
+            raise JudgeReplyUnusable(f"prompt blocked: {feedback['blockReason']}")  # this message's content, not an outage
+        cands = body.get("candidates")
+        if not isinstance(cands, list) or not cands or not isinstance(cands[0], dict):
+            raise JudgeUnavailable("reply has no candidates")
+        if cands[0].get("finishReason") in ("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII"):
+            raise JudgeReplyUnusable(f"reply blocked: {cands[0]['finishReason']}")
+        content = cands[0].get("content")
+        parts = content.get("parts") if isinstance(content, dict) else None
+        if not isinstance(parts, list):
+            raise JudgeReplyUnusable("reply has no parts")
+        # thinking models may return thought parts; only the answer text counts
+        return "".join(str(p.get("text", "")) for p in parts if isinstance(p, dict) and not p.get("thought"))
 
 
 # What counts as "the provider is unavailable" (feeds the breaker, uses the degraded policy).
@@ -431,4 +537,9 @@ class Judge(Protocol):
 
 
 def make_judge() -> Judge:
-    return AnthropicJudge(config.LLM_API_KEY) if config.LLM_API_KEY else OfflineJudge()
+    """The provider is chosen in config (STAYGUARD_JUDGE_PROVIDER, or from whichever API key is set)."""
+    if config.JUDGE_PROVIDER == "anthropic":
+        return AnthropicJudge(config.LLM_API_KEY)
+    if config.JUDGE_PROVIDER == "gemini":
+        return GeminiJudge(config.GEMINI_API_KEY)
+    return OfflineJudge()

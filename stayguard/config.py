@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     llm_timeout: float = Field(3.0, gt=0.0, le=60.0)
     llm_price_in: float = Field(0.10, ge=0.0)
     llm_price_out: float = Field(0.50, ge=0.0)
+    # Gemini as the judge provider (DECISIONS #44). Its own variable, like the Anthropic key, so a GEMINI_API_KEY that
+    # happens to be in the shell is never used by accident.
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.5-flash-lite"
+    # auto = the provider whose key is set (offline if none); both keys set needs an explicit choice
+    judge_provider: str = "auto"
 
     api_key: str = ""
     demo_mode: bool = False
@@ -93,6 +99,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _ordered(self) -> Settings:
+        if self.judge_provider not in ("auto", "offline", "anthropic", "gemini"):
+            raise ValueError(f"JUDGE_PROVIDER must be auto, offline, anthropic or gemini (got {self.judge_provider!r})")
+        if self.judge_provider == "auto":
+            if self.anthropic_api_key and self.gemini_api_key:
+                raise ValueError("both ANTHROPIC_API_KEY and GEMINI_API_KEY are set: choose one with STAYGUARD_JUDGE_PROVIDER")
+            self.judge_provider = "anthropic" if self.anthropic_api_key else "gemini" if self.gemini_api_key else "offline"
+        for name, key in (("anthropic", self.anthropic_api_key), ("gemini", self.gemini_api_key)):
+            if self.judge_provider == name and not key:
+                raise ValueError(f"JUDGE_PROVIDER={name} needs STAYGUARD_{name.upper()}_API_KEY")
         if self.classifier not in CLASSIFIER_KINDS:
             raise ValueError(f"CLASSIFIER must be one of {', '.join(CLASSIFIER_KINDS)} (got {self.classifier!r})")
         cal = calibration_for(self.classifier)
@@ -158,6 +173,14 @@ LLM_TIMEOUT_S = _s.llm_timeout
 # input tokens are estimated from the real prompt length (chars / 4), output tokens from JUDGE_OUTPUT_TOKENS.
 LLM_PRICE_IN_PER_MTOK = _s.llm_price_in
 LLM_PRICE_OUT_PER_MTOK = _s.llm_price_out
+GEMINI_API_KEY = _s.gemini_api_key
+GEMINI_MODEL = _s.gemini_model
+JUDGE_PROVIDER = _s.judge_provider  # resolved: offline | anthropic | gemini
+# Gemini 3.5 Flash-Lite, USD per million tokens on the paid tier. Source: https://ai.google.dev/gemini-api/docs/pricing,
+# checked 2026-10-29. Its free tier is free of charge, with per-minute and per-day limits set in Google AI Studio, and
+# Google may use free-tier requests to improve its products. ESTIMATES, used only if Gemini becomes the judge.
+GEMINI_PRICE_IN_PER_MTOK = 0.30
+GEMINI_PRICE_OUT_PER_MTOK = 2.50
 JUDGE_OUTPUT_TOKENS = 150  # assumed per judge reply (max_tokens is 300); two judges per judged message
 BREAKER_FAILURES = 3  # consecutive failures before the breaker opens
 BREAKER_COOLDOWN_S = 30.0
