@@ -78,6 +78,12 @@ CREATE TABLE IF NOT EXISTS audit (
 CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit BEGIN SELECT RAISE(ABORT, 'audit log is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit BEGIN SELECT RAISE(ABORT, 'audit log is append-only'); END;
 CREATE TABLE IF NOT EXISTS idempotency (key TEXT PRIMARY KEY, created REAL, payload_hash TEXT, response TEXT);
+-- Labels from hotels, guests and analysts on stored messages: the feedback queue for retraining (DECISIONS #41).
+-- Append-only by convention (a newer label from a stronger source wins at export); never edited in place.
+CREATE TABLE IF NOT EXISTS labels (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, message_id TEXT, created REAL, label INTEGER, source TEXT, note TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_labels_msg ON labels(message_id);
 """
 RUNTIME_TABLES = (
     "properties",
@@ -89,6 +95,7 @@ RUNTIME_TABLES = (
     "guest_attempts",
     "cases",
     "idempotency",
+    "labels",
 )
 
 TERMS = {"No Deposit": "pay_at_property", "Non Refund": "prepaid", "Refundable": "deposit"}

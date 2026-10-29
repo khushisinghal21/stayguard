@@ -344,7 +344,14 @@ def urlsplit_path(url: str) -> str:
 
 
 class LinkChecker:
-    def __init__(self, exclude_hosts: set[str] | None = None, use_blocklist: bool = True, extra_official: set[str] | None = None):
+    def __init__(
+        self,
+        exclude_hosts: set[str] | None = None,
+        use_blocklist: bool = True,
+        extra_official: set[str] | None = None,
+        net: Any | None = None,
+    ):
+        self.net = net  # a netcheck.NetChecker when STAYGUARD_NET_CHECKS=1 (DECISIONS #42); None = offline only
         self.exclude = {h.lower() for h in (exclude_hosts or set())}
         self.use_blocklist = use_blocklist
         self.official = set(config.OFFICIAL_DOMAINS) | {d.lower() for d in (extra_official or set())}
@@ -364,9 +371,47 @@ class LinkChecker:
                 return True
         return False
 
-    def check(self, url: str, property_domains: set[str] | None = None) -> LinkVerdict:
+    def check(self, url: str, property_domains: set[str] | None = None, deadline: float | None = None) -> LinkVerdict:
         """Check a link. If it carries another URL in its query string (an open redirect, even on an official
-        domain), the embedded URL is checked too and the worse verdict wins."""
+        domain), the embedded URL is checked too and the worse verdict wins. With network checks on, a shortener's real
+        destination and the domain's age are looked up too (only ever making the verdict worse)."""
+        v = self._check_offline(url, property_domains)
+        if self.net is not None and deadline is not None:
+            v = self._with_network(url, v, property_domains, deadline)
+        return v
+
+    def _with_network(self, url: str, v: LinkVerdict, property_domains: set[str] | None, deadline: float) -> LinkVerdict:
+        net = self.net
+        if net is None or v.verdict in ("official", "malicious") or "MAPS_LINK" in v.reasons or "BRAND_OWNED_DOMAIN" in v.reasons:
+            return v
+        score, reasons, verdict = v.score, list(v.reasons), v.verdict
+        target_rd = v.registered_domain
+        if any(r in reasons for r in ("URL_SHORTENER_HIDES_DESTINATION", "OPEN_REDIRECTOR")):
+            chain = net.follow(url, deadline)
+            for hop in chain[1:]:
+                hv = self._check_offline(hop, property_domains)
+                reasons.append(f"REDIRECTS_TO:{hv.host}")
+                target_rd = hv.registered_domain or target_rd
+                if hv.score > score:
+                    score, verdict = hv.score, hv.verdict
+                    reasons += [r for r in hv.reasons if r not in reasons]
+        if target_rd and target_rd not in self.official:
+            age = net.domain_age(target_rd, deadline)
+            if age.status == "registered" and age.days is not None and age.days < config.NEW_DOMAIN_DAYS:
+                reasons.append(f"NEWLY_REGISTERED_DOMAIN:{int(age.days)}d")
+                score = max(score, 0.6)
+            elif age.status == "unregistered":
+                reasons.append("DOMAIN_NOT_REGISTERED")
+                score = max(score, 0.6)
+            elif age.status == "unknown":
+                reasons.append("NETCHECK_UNAVAILABLE")
+        rank = {"safe": 0, "unknown": 1, "suspicious": 2, "malicious": 3}
+        new_verdict = "suspicious" if score >= 0.6 else ("unknown" if score >= 0.3 else "safe")
+        if rank.get(new_verdict, 0) > rank.get(verdict, 0):
+            verdict = new_verdict
+        return LinkVerdict(v.url, v.host, v.registered_domain, verdict, score, reasons)
+
+    def _check_offline(self, url: str, property_domains: set[str] | None = None) -> LinkVerdict:
         outer = self._check(url, property_domains)
         # every target, nested ones included, up to a bound (round 2, A3: only the first three were checked, and a
         # target's own embedded targets never were)

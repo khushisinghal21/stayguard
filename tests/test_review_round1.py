@@ -140,6 +140,7 @@ def test_breaker_probe_is_released_when_the_probe_hits_a_bug(engine, monkeypatch
     clk = [0.0]
     e = Engine.__new__(Engine)
     e.clf, e.links, e.metrics = engine.clf, engine.links, type(engine.metrics)()
+    e.opts, e.versions = engine.opts, engine.versions
     e.breaker = CircuitBreaker(failures=1, cooldown=1, clock=lambda: clk[0])
 
     class Flaky:
@@ -152,7 +153,7 @@ def test_breaker_probe_is_released_when_the_probe_hits_a_bug(engine, monkeypatch
             raise JudgeUnavailable("down")
 
     e.judge = Flaky()
-    monkeypatch.setattr(e.clf, "score", lambda t: 0.35)
+    monkeypatch.setattr(e.clf, "score", lambda t, ctx=None: 0.35)
     soft = "Please let us know if you want breakfast, it is 12 EUR."
     ctx = {"payment_terms": "deposit", "direction": "hotel_to_guest"}
     e.breaker.record(False)

@@ -155,6 +155,9 @@ class MessageIn(BaseModel):
     direction: Literal["hotel_to_guest", "guest_to_hotel"] = "hotel_to_guest"
     payment_terms: Literal["pay_at_property", "prepaid", "deposit", "unknown"] | None = None
     property_id: str | None = None
+    first_in_thread: bool | None = Field(
+        None, description="True if this message opens the conversation. Worked out from stored messages when omitted."
+    )
     message_id: str | None = Field(
         None,
         max_length=128,
@@ -163,6 +166,12 @@ class MessageIn(BaseModel):
             "the same id with a different payload is rejected with 409."
         ),
     )
+
+
+class LabelIn(BaseModel):
+    label: Literal["scam", "legit"]
+    source: Literal["hotel", "guest", "analyst"]
+    note: str = Field("", max_length=500)
 
 
 class SessionIn(BaseModel):
@@ -235,6 +244,16 @@ def check_message(body: MessageIn) -> dict[str, Any]:
         raise HTTPException(409, "message_id is still being processed; retry shortly", headers={"Retry-After": "1"}) from None
     except IdempotencyConflict:
         raise HTTPException(409, "message_id was already used for a different message") from None
+
+
+@app.post("/v1/messages/{message_id}/label", dependencies=[Depends(internal)])
+def label_message(message_id: str, body: LabelIn) -> dict[str, Any]:
+    """A hotel, guest or analyst says what a stored message really was. Feeds the retraining queue (DECISIONS #41);
+    never changes the stored decision."""
+    out = svc().label_message(message_id, body.label, body.source, body.note)
+    if out is None:
+        raise HTTPException(404, "unknown message_id")
+    return out
 
 
 @app.post("/v1/sessions/score", dependencies=[Depends(internal)])

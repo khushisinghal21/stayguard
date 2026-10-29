@@ -10,3 +10,4 @@ coverage.json
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
+.python-version

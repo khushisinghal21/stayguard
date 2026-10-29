@@ -297,6 +297,128 @@ legitimate messages the model dislikes). What it found, read only after the free
   there is no third blind set to measure the fix on. They are listed here and in the book's weaknesses chapter as the
   first work for the next round, to be measured on fresh data.
 
+### 38. A multilingual encoder as a candidate model, run without torch
+TF-IDF sees surface overlap only, so paraphrases and languages with few training examples slip past it (v2's clean
+misses were Dutch and Chinese). Candidate: intfloat's multilingual-e5-small (100 languages, 384 dimensions), the int8
+ONNX export published as `Xenova/multilingual-e5-small`, pinned to revision `761b726`, run with onnxruntime and
+`tokenizers` (`stayguard/encoder.py`). Weights come from `scripts/fetch_encoder.py`, which writes a manifest of SHA-256
+hashes; the encoder refuses files that do not match. Its runtime is an optional, hash-pinned extra
+(`requirements-encoder.lock`) so CI and the default model never need it. A configured encoder that cannot load stops
+start-up; it never silently becomes another model.
+- Chosen over: sentence-transformers with torch (a far heavier install for the same model); a hosted embedding API
+  (a network call on every message, and message text leaving the platform).
+- Each model kind has its own calibration file (`eval/calibration_<kind>.json`): thresholds chosen for one model mean
+  nothing for another. `tfidf` keeps `eval/calibration.json`, so the default system is unchanged.
+- The encoder was not run in the build environment (Hugging Face was unreachable there): its code path is tested with
+  a tiny ONNX fixture (`tests/fixtures/encoder`), and its training, calibration and v3 run happen on a machine that can
+  download it (`make encoder`).
+
+### 39. Booking context as model features, and model-only holds sent to the judges
+`stayguard/ctx_classifier.py` adds the booking around the text to the model: payment terms, who is writing, whether the
+message opens the conversation, whether it carries a link or a phone number, and whether every money sentence only
+points to the platform (#40). Two kinds: `tfidf_ctx` (today's features + context) and `encoder_ctx` (#38 + context).
+Regularisation is chosen by grouped 5-fold cross-validation on training rows only, scored by log loss, because the
+engine reads the output as a probability.
+- Training adds retired held-out v1 (tuned on since #28, the only labelled set with booking context not used for
+  calibration) and the feedback queue (#41). Dev and retired v2 calibrate; v3 is never trained or calibrated on
+  (`tests/test_pipeline_v3.py`).
+- The rule signals themselves (money ask, card data, off-platform moves, and their products with the payment terms)
+  were tried as features and dropped before any v3 run: the model trusted them absolutely and scored many more of
+  v2's legitimate payment messages near certainty than today's model does (the comparison is in the
+  `ctx_classifier.py` comment). The rules already act on those signals; the model double-counting them adds false holds.
+- Routing (`STAYGUARD_ROUTE_MODEL_HIGH_TO_JUDGES`): a message held only because the model scored it above MODEL_HIGH,
+  with no rule fired, goes to the prosecutor/defender judges instead. If the judges are down or their reply is
+  unusable it is still held, exactly as before. Hard-rule holds never reach the judges.
+- What this cannot fix, found by checking v2's false holds (v2 is retired, see #43): most of them were held by the
+  payment and card rules, not by the model, and rule holds are final. That is what #40 is for.
+
+### 40. A money mention that only points to the platform is warned, not held (switchable)
+Held-out v2's false holds were mostly genuine pay-at-property messages held by the payment-terms and card rules: "your
+card was declined, Booking.com will ask you to update it in the app", "we take a pre-authorisation at check-in", "we
+will not charge it before you arrive", a refund. Following such an instruction cannot pay a criminal: there is no link,
+no account number and no contact to pay through. With `STAYGUARD_PLATFORM_FLOW_WARN=1`, when every sentence that
+mentions money or a card only points to the platform's own app or account, to the reception on arrival, or says nothing
+is charged (`signals.PLATFORM_FLOW`), the message gets PLATFORM_FLOW_MONEY_MENTION: delivered with the guest safety
+banner instead of held.
+- This loosens the payment-terms rule (invariant 2), so it is narrow: no link other than an official one, no
+  off-platform payment or contact, no phone handoff, no card-number request in the chat (unless negated: "please do not
+  send card details here"), no pre-arrival demand (unless negated: "we will not charge it before you arrive"), no
+  injection, impersonation, obfuscation or overpayment story. The warning is a floor: the model and judges still run
+  and can still hold it, and a risky session turns it into a hold.
+- Built from v2's false holds (retired) and checked against every scam in v1, v2 and dev: none is platform-routed.
+  `tests/test_pipeline_v3.py` keeps the scam shapes that must never be routed.
+- Off by default; the v3 run measures it on its own and inside the candidate.
+
+### 41. Shadow mode and a feedback queue from real traffic
+Every number so far is on written messages; the only fix is labelled real traffic. `STAYGUARD_ENFORCE=0` returns and
+stores every decision unchanged with `enforced: false`, so the platform can run StayGuard without acting on it (a
+fail-closed hold is still enforced: shadow mode measures the engine, it is not a way around it).
+`POST /v1/messages/{id}/label` records what a hotel, guest or analyst says a message really was; it never changes the
+stored decision and is audited. `python -m stayguard.feedback report` compares decisions with labels;
+`export` writes `data/feedback/labelled_queue.jsonl`, which the context models train on (`make retrain`).
+- Label resolution: an analyst's latest label wins; otherwise hotel and guest labels must agree, and a disagreement is
+  left out and counted as needing review.
+- Only masked text is exported, and any message matching a dev, v2 or v3 text is dropped, so traffic cannot leak an
+  evaluation message into training.
+- Labels arrive mostly for messages someone noticed, so the report's rates are not a random sample of traffic.
+- `first_in_thread` is now an optional request field (worked out from stored messages when omitted) because the
+  context models use it.
+
+### 42. Network link checks, opt-in and only ever stricter
+`STAYGUARD_NET_CHECKS=1` adds two lookups the offline checker cannot do (`stayguard/netcheck.py`): following a
+shortener's or open redirector's redirects to check the real destination, and the domain's registration date from its
+RDAP record (NEWLY_REGISTERED_DOMAIN under 30 days, DOMAIN_NOT_REGISTERED without a record). They can only raise a
+link's score. Fetching attacker-chosen URLs from a server is dangerous, so: http/https on ports 80/443 only, no
+credentials, no cookies, no bodies read except the RDAP JSON; every hop's address must be public and the connection
+is pinned to that checked address (Host header and TLS SNI carry the name) so DNS rebinding cannot turn it inward;
+redirects are followed hop by hop by our code; a per-request timeout and a per-message budget; results cached an hour.
+Any failure leaves the offline verdict (NETCHECK_UNAVAILABLE).
+- Not measured on held-out v3: its domains are invented, so every one would come back unregistered and the number
+  would say nothing about real links. Measuring it needs real message links (shadow mode, #41).
+- Chosen over: a third-party URL-reputation API (sends guests' links to another company) and a headless browser
+  (a much larger attack surface for one redirect chain).
+
+### 43. Held-out v3, and one pre-registered blind run
+v2 stops being blind as soon as its misses are fixed (#37), as v1 did (#28). Held-out v3 (`data/curated/
+heldout_v3.jsonl`, 312 rows, 20 languages) was written by a separate agent that could not see the code, rules or
+earlier sets, and frozen with its hash before any of #38-#42 was measured (`docs/HELDOUT_V3_BRIEF.md` has the verbatim
+brief and its limits: same model family as the other sets; the brief asks for the false-hold kinds v2 found). Nobody
+working on StayGuard has read it. v1 is retired into the context models' training rows and v2 into their calibration
+rows.
+- The comparison is fixed before the run (`eval/evaluate_v3.py`): PRIMARY is the candidate (encoder + context, its own
+  thresholds, platform-flow warning, routing) against today's system (TF-IDF, 0.03 / 0.52), on scams caught and on
+  legitimate messages held, exact paired McNemar, Holm-adjusted over the two. Every other arm (each change on its own,
+  judges down, classifiers alone, real judges if a key is set) is exploratory.
+- `make eval-v3` refuses unless the tree is clean, v3 matches its hash, no STAYGUARD_* setting except the API key is
+  set, and every arm's calibration is committed. The first run is frozen in `eval/heldout_v3_first_look.json`; the
+  real-judge arm can be added once from the same commit (`--add-arm`); anything later is written as NOT blind.
+- Per-language thresholds were considered and declined: only English has 30 or more of each label in the
+  calibration rows (`eval/calibration_tfidf_ctx.json`, `per_language`).
+- Whatever v3 shows is reported as it comes out, including a candidate that does worse than today's system.
+
+### 44. Gemini as a judge provider, and the v3 real-judge arm on its free tier
+Anthropic's API has no free credits, so the real prosecutor/defender judges could not be measured without paying.
+`GeminiJudge` (`stayguard/judges.py`) runs the same two judges over Google's generateContent API, default model
+`gemini-3.5-flash-lite` (stable, free tier available, minimal thinking by default, so it answers quickly). It shares
+everything that matters with the Anthropic judge: the prompts, the untrusted-message wrapping, the shared reply parser
+(`parse_opinion`), the quote check, the referee, and the split between provider failures (HTTP errors, rate limits,
+no candidates: these feed the breaker) and replies unusable for this message (a safety block, no JSON: held, breaker
+untouched). Google's content filters are lowered to "block only high" because scam text is the input by design.
+- Chosen by `STAYGUARD_GEMINI_API_KEY` (its own variable, like the Anthropic key), or explicitly with
+  `STAYGUARD_JUDGE_PROVIDER`; both keys set without a choice stops start-up.
+- **Free-tier data use:** Google's pricing page marks free-tier requests as "Used to improve our products". Judges only
+  ever see masked text (invariant 5), and the v3 messages are written test data, so the free tier is fine for the
+  evaluation. Real guest messages need a paid key, whose requests are not used that way.
+- Free-tier limits are per minute and per day, set per project in Google AI Studio. The v3 runner paces the real-judge
+  arm (`--judge-rpm`, default 10), retries rate-limit answers, and gives each call 60 s, so a quota shows up as
+  slowness, not as an outage; the arm still reports how many messages took the degraded path. In production none of
+  that applies: the 3 s timeout and the breaker stand.
+- Found while adding this: with any API key in the environment, the v3 runner built every arm, today's system included,
+  with the real judge, which would have silently changed the pre-registered comparison. Every arm except the real-judge
+  arm now uses the offline judge explicitly, and a test pins it.
+- Cost estimates use the configured provider's paid prices (Gemini 3.5 Flash-Lite: estimates from the pricing page,
+  checked 2026-10-29); the report, which runs with no key, keeps the Anthropic estimate as before.
+
 ## Known limits
 - Dev and held-out v1 have the same author as the rules, and v1 was tuned on after its first run (#28). Held-out v2
   has a different author but is still small (148) and written, not collected. Real validation needs labelled

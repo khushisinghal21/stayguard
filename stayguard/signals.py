@@ -695,6 +695,86 @@ IMPERATIVE = re.compile(
 )
 
 
+# --- Platform-routed money mentions (DECISIONS #40) ---------------------------------------------------------------
+# A sentence that mentions money or a card but sends the guest only to the platform's own flow (the app, their account,
+# the reception on arrival) or says nothing will be charged. Held-out v2 (retired as a blind set once v3 was frozen)
+# showed 8 of its 10 false holds were genuine messages like this held by the payment-terms rules. Following such an
+# instruction cannot pay a criminal: there is no link, no account number and no contact to pay through. The engine only
+# uses this when every money/card sentence is routed this way and nothing else in the message is wrong.
+PLATFORM_FLOW = _rx(
+    # the platform app or account: "in the app", "in your Booking.com account", "on Booking.com", "through the platform"
+    r"\b(?:in|via|through|on|using|under)\s+(?:the\s+|your\s+|ihrem\s+|ihr\s+|su\s+|tu\s+|votre\s+|sua\s+|seu\s+)?"
+    r"(?:booking(?:\.com)?[\s-]?)?(?:app|application|account|extranet|platform|konto|cuenta|compte|conta"
+    r"|aplicaci[oó]n|aplicativo|applicazione|anwendung)\b",
+    r"\b(?:the|your)\s+booking(?:\.com)?\s+(?:app|account)\b",
+    r"\b(?:on|via|through)\s+booking(?:\.com)?\b",
+    r"\bbooking(?:\.com)?\s+will\s+(?:send|ask|request|contact|charge|refund)",
+    # paid in person: "at check-in", "at reception", "on arrival", "when you check in", "after check-out"
+    r"\b(?:at|during)\s+(?:the\s+)?(?:check-?in|check-?out|reception|front\s+desk)\b",
+    r"\b(?:on|upon)\s+(?:your\s+)?arrival\b",
+    r"\bwhen\s+you\s+(?:arrive|check\s+in)\b",
+    r"\bafter\s+(?:your\s+)?check-?out\b",
+    # nothing taken now: guarantees, pre-authorisations, refunds
+    r"\b(?:will\s+not|won't|do\s+not|don't|never|not)\s+(?:be\s+)?charge[ds]?\b",
+    r"\bnothing\s+is\s+charged\b",
+    r"\bonly\s+(?:as\s+)?a\s+guarantee\b",
+    r"\bpre-?authori[sz]",
+    r"\brefund(?:ed)?\b",
+    # a status report, not an ask: "the card on your reservation was declined" (what to do next must still be routed)
+    r"\b(?:was|has\s+been|were|got)\s+(?:declined|refused|rejected)\b",
+    # the same in the languages the lexicons already cover
+    r"\b(?:en|a)\s+la\s+(?:app|recepci[oó]n|llegada)\b",
+    r"\bal\s+llegar\b",
+    r"\b(?:dans|sur)\s+l['’]application\b",
+    r"\b(?:[àa]\s+la\s+r[ée]ception|[àa]\s+l['’]arriv[ée]e)\b",
+    r"\bin\s+der\s+app\b",
+    r"\b(?:an\s+der\s+rezeption|bei\s+(?:der\s+)?anreise)\b",
+    r"\b(?:no|pelo)\s+(?:app|aplicativo)\b",
+    r"\bna\s+(?:chegada|recep[cç][aã]o)\b",
+    r"\bnell['’]app\b",
+    r"\b(?:all['’]arrivo|alla\s+reception)\b",
+)
+# Asking for the card itself in the chat ("reply with your card number") is never platform-routed, unless negated
+# ("please do not send card details here").
+CARD_SEND = re.compile(
+    r"(?<!will )\b(?:send|share|provide|reply\s+with|type|write|give|forward|text|enter)\b[^.!?\n]{0,40}"
+    r"\b(?:card|cvv|cvc|iban|account\s+number|security\s+code)",
+    re.IGNORECASE,
+)
+_NEGATED_SEND = re.compile(
+    r"\b(?:do\s+not|don't|never|please\s+don't|no\s+need\s+to|not)\s+(?:\w+\s+){0,2}(?:send|share|provide|reply|type|write|give|forward|text|enter)\b"
+    r"|\bsenden\s+sie\s+(?:uns\s+)?keine\b|\bno\s+(?:nos\s+)?env[ií]e|\bn['’]envoyez\s+(?:pas|jamais)\b|\bn[ãa]o\s+(?:nos\s+)?envie\b"
+    r"|\bnon\s+(?:ci\s+)?invi(?:ate|are)\b",
+    re.IGNORECASE,
+)
+# "we will not charge it before you arrive", "nothing is charged in advance": a pre-arrival phrase under a negation is a
+# guarantee, not a demand
+_NO_CHARGE = re.compile(
+    r"\b(?:will\s+not|won't|do\s+not|don't|never|nothing\s+is|not)\s+(?:be\s+)?charge[ds]?(?:\s+\w+){0,3}?\s+"
+    r"(?:before\s+(?:you\s+)?(?:arrive|arrival|check\s+in|check-in)|in\s+advance|prior\s+to\s+(?:your\s+)?arrival)\b",
+    re.IGNORECASE,
+)
+
+
+def _only_negated_pre_arrival(sent: str) -> bool:
+    """Every pre-arrival match lies wholly inside a negated-charge phrase."""
+    spans = [m.span() for m in _NO_CHARGE.finditer(sent)]
+    return all(any(a <= m.start() and m.end() <= b for a, b in spans) for m in PRE_ARRIVAL.finditer(sent))
+
+
+def _platform_routed(sent: str) -> bool:
+    """True if this money/card sentence only points to the platform's own flow (see PLATFORM_FLOW)."""
+    if OFF_PLATFORM_PAYMENT.search(sent) or _links(sent) or PAY_DESTINATION.search(sent) or PAY_TO_EMAIL.search(sent):
+        return False
+    if PRE_ARRIVAL.search(sent) and not _only_negated_pre_arrival(sent):
+        return False
+    negated_send = bool(_NEGATED_SEND.search(sent))
+    if CARD_SEND.search(sent) and not negated_send:
+        return False
+    # a bare "please don't send card details in this chat" is a safety reminder, routed by definition
+    return bool(PLATFORM_FLOW.search(sent)) or (negated_send and not PAY_TERMS.search(sent))
+
+
 @dataclass
 class TextSignals:
     money_ask: bool = False  # strong: pay + instruction + (link | deadline | goal | verification | off-platform)
@@ -714,6 +794,8 @@ class TextSignals:
     # delivers such a message on the quiet fast path (review round 2, A1/B1)
     reassured_sensitive: bool = False
     phone_handoff: bool = False  # "ring us on <number>": judged, never fast-pathed (review round 3)
+    # every sentence that mentions money or a card only points to the platform's own flow (DECISIONS #40)
+    platform_flow_only: bool = False
     mixed_script: list[str] = field(default_factory=list)
     urls: list[str] = field(default_factory=list)
     evidence: dict[str, list[str]] = field(default_factory=dict)
@@ -915,6 +997,7 @@ def _extract(t: str) -> TextSignals:
     # Sentence-level reading. A money ASK needs payment words plus an instruction in the same sentence,
     # and a reassuring sentence ("you pay at the property", "we never ask for card details") is not an ask.
     card_spans, rail_spans, unreassured_pay = [], [], []
+    trigger_sents: list[str] = []  # sentences whose money or card words count (for platform_flow_only)
     shadow_ask = False
     sensitive_in_calm: list[str] = []
     for full in SENTENCE_SPLIT.split(t):
@@ -942,8 +1025,11 @@ def _extract(t: str) -> TextSignals:
                 demand = PAY_DESTINATION.search(seg) or PAY_TO_EMAIL.search(seg) or PRE_ARRIVAL.search(seg)
                 if (IMPERATIVE.search(seg) and not obj) or demand:
                     sent += " " + seg
-        card_spans += _spans(CARD_DATA, sent)
-        rail_spans += _spans(OFF_PLATFORM_PAYMENT, sent)
+        here_card, here_rail = _spans(CARD_DATA, sent), _spans(OFF_PLATFORM_PAYMENT, sent)
+        card_spans += here_card
+        rail_spans += here_rail
+        if here_card or here_rail or PAY_TERMS.search(sent):
+            trigger_sents.append(sent)
         # Shadow reading of the whole sentence, reassurance included: if it reads as a payment ask but the filtered
         # sentence doesn't, a reassurance hid it. Round 3 (A1) showed layer 3 only covered card and rail words, so a plain
         # "pay the 80 EUR tax at <link>" next to "fully paid at the property" was delivered clean.
@@ -1002,6 +1088,10 @@ def _extract(t: str) -> TextSignals:
     ):
         s.money_ask = s.soft_money_ask = True
         s.add("money_ask", unreassured_pay[:3])
+        trigger_sents.append(t)  # a money ask spread across sentences is never platform-routed
+    s.platform_flow_only = bool(trigger_sents) and all(_platform_routed(x) for x in trigger_sents)
+    if s.platform_flow_only:
+        s.add("platform_flow", [m.group() for x in trigger_sents for m in PLATFORM_FLOW.finditer(x)][:3])
     s.card_data, s.off_platform_payment = bool(card_spans), bool(rail_spans)
     s.phone_handoff = bool(PHONE_HANDOFF.search(t))
     if s.phone_handoff:

@@ -257,7 +257,9 @@ def test_no_heldout_text_reaches_training_or_calibration():
     from stayguard.classifier import hotel_training_rows, sms_splits
 
     held = set()
-    for name in ("heldout_eval.jsonl", "heldout_v2.jsonl"):
+    # the original model's training and calibration never see any held-out set; the context models' rows are checked
+    # in tests/test_pipeline_v3.py (they train on retired v1 and calibrate on retired v2, DECISIONS #39/#41)
+    for name in ("heldout_eval.jsonl", "heldout_v2.jsonl", "heldout_v3.jsonl"):
         for line in (ROOT / "data" / "curated" / name).read_text().splitlines():
             if line.strip():
                 held.add(json.loads(line)["text"].strip().lower())

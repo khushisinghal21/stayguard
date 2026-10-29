@@ -46,8 +46,9 @@ def make(engine, monkeypatch):
 
         e.breaker = CircuitBreaker()
         e.metrics = engine_mod.Metrics()
+        e.opts, e.versions = engine.opts, engine.versions
         if model_p is not None:
-            monkeypatch.setattr(e.clf, "score", lambda text: model_p)
+            monkeypatch.setattr(e.clf, "score", lambda text, ctx=None: model_p)
         return e
 
     return _make

@@ -1,0 +1,10 @@
+{
+  "repo": "test/tiny-encoder",
+  "revision": "fixture0",
+  "model": "onnx/model_quantized.onnx",
+  "tokenizer": "tokenizer.json",
+  "files": {
+    "onnx/model_quantized.onnx": "0906f4929eb5cb0143a9127239d9d6c80cfccffeacf16c455e5a051d4768e625",
+    "tokenizer.json": "d1a216733283ea8a379e9b9b7a8cf245dea656fa0763bb3e561109c7baf5c680"
+  }
+}

@@ -195,7 +195,8 @@ class ScamClassifier:
         self.pipe: Pipeline = blob["pipeline"]
         self.report = blob.get("report", {})
 
-    def score(self, text: str) -> float:
+    def score(self, text: str, ctx: dict[str, Any] | None = None) -> float:
+        """ctx is accepted for a common interface with the context models (ctx_classifier.py); this model ignores it."""
         return float(self.pipe.predict_proba([prep(text)])[0, 1])
 
     def top_terms(self, text: str, k: int = 5) -> list[str]:

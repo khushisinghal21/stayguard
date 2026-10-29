@@ -80,7 +80,7 @@ feed is pinned by SHA-256 in `data/MANIFEST.json`, and reports refuse to compare
 | Same on the SMS-heavy 1,000-message mix | 1.0% / $0.0020 (vs $0.1956 if every message went to the judges) |
 | Legit held-out v1 messages with a common emoji added (❤️, 👍, 👨‍👩‍👧 …): warned / held | 3.4% / 1.7% |
 | Evaluation checks that crashed and failed closed, across every run and rewrite (would count as caught) | 0 |
-| Latency p50 / p95, in-process with the offline judge on the SMS-heavy mix (a hosted LLM would add an estimated 1-3 s to every judged message, so p95 on hotel messages would be seconds) | 2.7 ms / 4.5 ms |
+| Latency p50 / p95, in-process with the offline judge on the SMS-heavy mix (a hosted LLM would add an estimated 1-3 s to every judged message, so p95 on hotel messages would be seconds) | 2.7 ms / 5.1 ms |
 <!-- results:end -->
 
 ### Honest caveats
@@ -165,11 +165,43 @@ Or `docker compose up --build` (demo mode on), then open http://localhost:8000.
 (`STAYGUARD_DEMO_MODE=1`) adds the console's demo endpoints (issuing a guest PIN, the scripted attack, samples) and,
 if no key is set, lets the console call everything without one. Never run demo mode on a public host.
 
-**Optional: real LLM judges.** Set `STAYGUARD_ANTHROPIC_API_KEY` (and optionally `STAYGUARD_LLM_MODEL`). Without
-it a deterministic offline judge runs in their place, so everything works with no key and no network; the UI
-says which one is active.
+**Optional: real LLM judges.** Set `STAYGUARD_GEMINI_API_KEY` (Google AI Studio; free tier available, default model
+`gemini-3.5-flash-lite`, change with `STAYGUARD_GEMINI_MODEL`) or `STAYGUARD_ANTHROPIC_API_KEY` (optionally
+`STAYGUARD_LLM_MODEL`). Without a key a deterministic offline judge runs in their place, so everything works with no
+key and no network; the UI says which one is active. Google may use free-tier requests to improve its products, so use
+a paid key for real guest messages (DECISIONS #44).
 
 Development: see `CONTRIBUTING.md` (`make lint types test`). Agents: see `CLAUDE.md` for the invariants.
+
+## Pipeline changes waiting for their blind test (held-out v3)
+
+Five changes built after held-out v2, all **off by default** and **not yet measured**: none of their numbers exist
+until the one blind run on held-out v3 (`make eval-v3`), whatever it shows. Reasons and limits are in DECISIONS #38-#43.
+
+| Change | Switch | DECISIONS |
+|---|---|---|
+| Multilingual encoder (multilingual-e5-small, ONNX) + booking context as the language model | `STAYGUARD_CLASSIFIER=encoder_ctx` | #38, #39 |
+| TF-IDF + booking context (no download needed) | `STAYGUARD_CLASSIFIER=tfidf_ctx` | #39 |
+| Model-only holds go to the prosecutor/defender judges (still held if they are down) | `STAYGUARD_ROUTE_MODEL_HIGH_TO_JUDGES=1` | #39 |
+| Money mentions that only point to the platform's own app/reception are warned, not held | `STAYGUARD_PLATFORM_FLOW_WARN=1` | #40 |
+| Shadow mode (decisions returned with `enforced: false`) and a labelled feedback queue | `STAYGUARD_ENFORCE=0`, `POST /v1/messages/{id}/label` | #41 |
+| Network link checks: shortener destinations, domain age (RDAP), SSRF-safe | `STAYGUARD_NET_CHECKS=1` | #42 |
+
+The blind run, on a machine that can reach huggingface.co (it downloads the encoder weights once):
+
+```bash
+make install-encoder         # dev toolchain + onnxruntime/tokenizers, hash-pinned (requirements-encoder.lock)
+make encoder                 # fetch the encoder, train encoder_ctx, write eval/calibration_encoder_ctx.json
+git add eval/calibration_encoder_ctx.json && git commit -m "Calibrate the encoder model for the v3 run"
+make eval-v3                 # ONE blind run -> eval/heldout_v3_first_look.json (refuses a dirty tree)
+# optional, same commit, real judges (Gemini free tier; pace to your AI Studio limit):
+#   STAYGUARD_GEMINI_API_KEY=... python -m eval.evaluate_v3 --add-arm candidate_real_judges --judge-rpm 10
+```
+
+The primary comparison is fixed in advance: the candidate (encoder + context + platform-flow warning + routing)
+against today's system, on scams caught and legitimate messages held, paired exact McNemar, Holm-adjusted.
+Held-out v3 was written by a separate agent that never saw the code (`docs/HELDOUT_V3_BRIEF.md`) and has not been
+read by anyone working on StayGuard.
 
 ## The console (http://localhost:8000)
 
@@ -188,6 +220,7 @@ Development: see `CONTRIBUTING.md` (`make lint types test`). Agents: see `CLAUDE
 | Endpoint | Purpose |
 |---|---|
 | `POST /v1/messages/check` | Decide on a message: `deliver` / `warn` / `hold` / `block`, with reason codes, quoted evidence, path, trace, versions. `message_id` makes it idempotent. |
+| `POST /v1/messages/{id}/label` | A hotel, guest or analyst labels a stored message scam/legit (feedback queue, DECISIONS #41); never changes the decision. |
 | `POST /v1/sessions/score` | Score an extranet login/session for takeover risk; returns `step_up_required`. |
 | `POST /v1/sessions/{id}/reads` | The extranet reports which reservations a session opened (used by containment). |
 | `POST /v1/guest/verify` | Guest check by reservation number + PIN (public; rate-limited and locked after repeated wrong PINs). |
