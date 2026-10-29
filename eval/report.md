@@ -1,6 +1,6 @@
 # StayGuard evaluation report
 
-Generated 2026-10-28 06:41 at commit `cb526dc`. Reproduce with `python -m eval.evaluate`.
+Generated 2026-10-29 07:43 at commit `f804e35`. Reproduce with `python -m eval.evaluate`.
 Data manifest `c0cc5d1b1f71ce5d` (feeds fetched 2026-10-27T06:19:37+0000). Held-out set sha256 `9defc0ab5ab31ab4...`, committed in `04376a3`.
 Model thresholds: MODEL_LOW 0.03, MODEL_HIGH 0.52 (eval/calibration.json).
 
@@ -211,7 +211,7 @@ Synthetic data is separable by construction, so this is a plumbing check, not ev
 ## E. Cost and latency (970 SMS test-split messages + 30 held-out scams)
 
 - Paths: {'rule': 985, 'model': 5, 'judges': 10}; share sent to the AI judges: **1.0%** on this SMS-heavy mix, **14.5%** on the held-out v1 hotel messages (estimated $0.0288 per 1,000 at that share).
-- Latency p50 2.67 ms, p95 4.53 ms, p99 6.58 ms
+- Latency p50 2.72 ms, p95 5.09 ms, p99 7.47 ms
 - **Estimated** LLM cost: $0.001991 per 1,000 messages, vs $0.19564 if every message went to the judges ($0.000199 per judged message). Price: Claude Haiku 5.5 $0.1/MTok in, $0.5/MTok out (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-27).
 - ESTIMATE, not a bill: input tokens = prompt characters / 4, output = 150 tokens per judge, 2 judges. Latency is in-process, excludes network and DB, and the judge path ran offline-deterministic; a hosted LLM adds an estimated 1-3 s to judged messages only.
 

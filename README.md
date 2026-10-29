@@ -80,7 +80,7 @@ feed is pinned by SHA-256 in `data/MANIFEST.json`, and reports refuse to compare
 | Same on the SMS-heavy 1,000-message mix | 1.0% / $0.0020 (vs $0.1956 if every message went to the judges) |
 | Legit held-out v1 messages with a common emoji added (❤️, 👍, 👨‍👩‍👧 …): warned / held | 3.4% / 1.7% |
 | Evaluation checks that crashed and failed closed, across every run and rewrite (would count as caught) | 0 |
-| Latency p50 / p95, in-process with the offline judge on the SMS-heavy mix (a hosted LLM would add an estimated 1-3 s to every judged message, so p95 on hotel messages would be seconds) | 2.7 ms / 4.5 ms |
+| Latency p50 / p95, in-process with the offline judge on the SMS-heavy mix (a hosted LLM would add an estimated 1-3 s to every judged message, so p95 on hotel messages would be seconds) | 2.7 ms / 5.1 ms |
 <!-- results:end -->
 
 ### Honest caveats
